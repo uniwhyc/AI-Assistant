@@ -1,0 +1,24 @@
+# Visual Studio 工作区缓存
+.vs/
+
+# 编译产物与运行时数据
+# 注意：bin/claude-configs、bin/codex-configs 是程序运行后生成的用户配置，
+# 可能包含真实 API Key 等密钥，严禁上传。
+bin/
+
+# 测试输出：界面截图、隔离测试目录、环境修复检查副本
+artifacts/
+
+# 便携版打包产物（分发请把 zip 上传到 Release 附件，不进仓库）
+release/
+
+# 本地维护脚本（环境修复等工具仅本机使用）
+scripts/
+
+# 临时与备份文件
+*.tmp
+*.bak
+*.user
+*.suo
+Thumbs.db
+Desktop.ini

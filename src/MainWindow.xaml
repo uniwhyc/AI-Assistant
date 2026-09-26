@@ -1,0 +1,527 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI Assistant · 本地用量统计" Width="1200" Height="800" MinWidth="1100" MinHeight="740"
+        WindowStartupLocation="CenterScreen" Background="#101316" Foreground="#F0F2F4"
+        FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="13" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Muted" Color="#A1AAB4"/>
+        <SolidColorBrush x:Key="Green" Color="#71E3BF"/>
+        <SolidColorBrush x:Key="Orange" Color="#EFB18A"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#29433D"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#F0F2F4"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#29343A"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#E0E5EA"/>
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#242B33"/><Setter Property="Foreground" Value="#F0F2F4"/>
+            <Setter Property="BorderBrush" Value="#526171"/><Setter Property="Padding" Value="12,9"/>
+            <Setter Property="MaxWidth" Value="440"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToolTip">
+                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ContextMenu">
+            <Setter Property="Background" Value="#242B33"/><Setter Property="Foreground" Value="#F0F2F4"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
+                <Border Background="{TemplateBinding Background}" BorderBrush="#526171" BorderThickness="1" CornerRadius="7" Padding="4"><ItemsPresenter/></Border>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#F0F2F4"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
+                <Border x:Name="MenuSurface" Background="Transparent" CornerRadius="4" Padding="12,8">
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"/>
+                        <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" Foreground="#A1AAB4" Margin="28,0,0,0"/>
+                        <Popup IsOpen="{TemplateBinding IsSubmenuOpen}" Placement="Right" AllowsTransparency="True" Focusable="False">
+                            <Border Background="#242B33" BorderBrush="#526171" BorderThickness="1" CornerRadius="7" Padding="4"><ItemsPresenter/></Border>
+                        </Popup>
+                    </Grid>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="MenuSurface" Property="Background" Value="#394753"/></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#7F8996"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <ContextMenu x:Key="TextEditMenu">
+            <MenuItem Header="剪切" Command="ApplicationCommands.Cut" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Header="复制" Command="ApplicationCommands.Copy" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Header="粘贴" Command="ApplicationCommands.Paste" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Header="全选" Command="ApplicationCommands.SelectAll" CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+        </ContextMenu>
+        <Style x:Key="ScrollThumb" TargetType="Thumb">
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Thumb">
+                <Border x:Name="Grip" Background="#56616D" CornerRadius="4" Margin="3" MinWidth="6" MinHeight="6"/>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="#83909E"/></Trigger>
+                    <Trigger Property="IsDragging" Value="True"><Setter TargetName="Grip" Property="Background" Value="#71E3BF"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="ScrollPage" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="14"/><Setter Property="Background" Value="#191D22"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+                <Border Background="{TemplateBinding Background}" CornerRadius="7">
+                    <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="{TemplateBinding Orientation}">
+                        <Track.DecreaseRepeatButton><RepeatButton x:Name="Decrease" Style="{StaticResource ScrollPage}" Command="ScrollBar.PageUpCommand"/></Track.DecreaseRepeatButton>
+                        <Track.Thumb><Thumb Style="{StaticResource ScrollThumb}"/></Track.Thumb>
+                        <Track.IncreaseRepeatButton><RepeatButton x:Name="Increase" Style="{StaticResource ScrollPage}" Command="ScrollBar.PageDownCommand"/></Track.IncreaseRepeatButton>
+                    </Track>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="Orientation" Value="Horizontal">
+                        <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                        <Setter TargetName="Decrease" Property="Command" Value="ScrollBar.PageLeftCommand"/>
+                        <Setter TargetName="Increase" Property="Command" Value="ScrollBar.PageRightCommand"/>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+            <Style.Triggers><Trigger Property="Orientation" Value="Horizontal"><Setter Property="Width" Value="Auto"/><Setter Property="Height" Value="14"/></Trigger></Style.Triggers>
+        </Style>
+        <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+        <Style x:Key="Caption" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="#191D22"/><Setter Property="BorderBrush" Value="#2D333B"/>
+            <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="20"/>
+        </Style>
+        <Style x:Key="ButtonKeyboardFocus" TargetType="Control">
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Control">
+                <Rectangle Margin="-3" Stroke="#71E3BF" StrokeThickness="1" StrokeDashArray="2,2" RadiusX="8" RadiusY="8" IsHitTestVisible="False"/>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#242B33"/><Setter Property="Foreground" Value="#E4E8ED"/>
+            <Setter Property="BorderBrush" Value="#414A56"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="16,10"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ButtonKeyboardFocus}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+                <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.8"/></Trigger>
+                    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.6"/></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="Nav" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/><Setter Property="Margin" Value="0,3"/>
+            <Setter Property="Padding" Value="16,13"/>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#F0F2F4"/><Setter Property="Background" Value="#242B33"/>
+            <Setter Property="Padding" Value="12,9"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
+                <Border x:Name="Item" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="7"><ContentPresenter/></Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Item" Property="Background" Value="#394753"/></Trigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="Item" Property="Background" Value="#29433D"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#F0F2F4"/><Setter Property="MinHeight" Value="40"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
+                <Grid>
+                    <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                        <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+                            <Border Background="#20262D" BorderBrush="#414A56" BorderThickness="1" CornerRadius="7">
+                                <Path Data="M 0 0 L 4 4 L 8 0" Stroke="#A1AAB4" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,13,0"/>
+                            </Border>
+                        </ControlTemplate></ToggleButton.Template>
+                    </ToggleButton>
+                    <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" IsHitTestVisible="False" Margin="13,0,33,0" VerticalAlignment="Center"/>
+                    <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False">
+                        <Border Background="#242B33" BorderBrush="#526171" BorderThickness="1" CornerRadius="7" MinWidth="{TemplateBinding ActualWidth}" Padding="3">
+                            <ScrollViewer MaxHeight="280"><ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained"/></ScrollViewer>
+                        </Border>
+                    </Popup>
+                </Grid>
+                <ControlTemplate.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="Effect"><Setter.Value><DropShadowEffect Color="#71E3BF" BlurRadius="4" ShadowDepth="0"/></Setter.Value></Setter></Trigger></ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#20262D"/><Setter Property="Foreground" Value="#F0F2F4"/>
+            <Setter Property="CaretBrush" Value="#71E3BF"/><Setter Property="BorderBrush" Value="#414A56"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,8"/><Setter Property="MinHeight" Value="40"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="SelectionBrush" Value="#3D7967"/><Setter Property="SelectionOpacity" Value="0.7"/>
+            <Setter Property="ContextMenu" Value="{StaticResource TextEditMenu}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
+                <Border x:Name="InputBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7">
+                    <ScrollViewer x:Name="PART_ContentHost"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="InputBorder" Property="BorderBrush" Value="#71E3BF"/></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="InputBorder" Property="Opacity" Value="0.45"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="TimeListItem" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="#F0F2F4"/><Setter Property="Background" Value="Transparent"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+                <Border x:Name="Item" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="5">
+                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Item" Property="Background" Value="#394753"/></Trigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="Item" Property="Background" Value="#29433D"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="TimeList" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#F0F2F4"/><Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Hidden"/>
+        </Style>
+        <Style x:Key="TimeCombo" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+            <Setter Property="IsEditable" Value="True"/><Setter Property="IsTextSearchEnabled" Value="False"/>
+            <Setter Property="Width" Value="132"/><Setter Property="Padding" Value="10,0,32,0"/>
+            <Setter Property="FontFamily" Value="Consolas"/><Setter Property="FontSize" Value="14"/>
+            <Setter Property="ToolTip" Value="可输入或下拉选择 24 小时制时间，格式 HH:mm:ss，例如 09:30:00"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
+                <Grid>
+                    <ToggleButton Focusable="False" IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                        <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+                            <Border Background="#20262D" BorderBrush="#414A56" BorderThickness="1" CornerRadius="7">
+                                <Path Data="M 0 0 L 4 4 L 8 0" Stroke="#A1AAB4" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,13,0"/>
+                            </Border>
+                        </ControlTemplate></ToggleButton.Template>
+                    </ToggleButton>
+                    <TextBox x:Name="PART_EditableTextBox" Margin="{TemplateBinding Padding}" Padding="0" Background="Transparent" BorderThickness="0"
+                        Foreground="{TemplateBinding Foreground}" CaretBrush="#71E3BF" SelectionBrush="#3D7967" SelectionOpacity="0.7"
+                        VerticalContentAlignment="Center" Focusable="True" ContextMenu="{StaticResource TextEditMenu}"/>
+                    <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False" StaysOpen="False">
+                        <Border Background="#242B33" BorderBrush="#526171" BorderThickness="1" CornerRadius="7" MinWidth="{TemplateBinding ActualWidth}" Padding="8">
+                            <StackPanel Orientation="Horizontal">
+                                <ListBox x:Name="PART_HourList" Style="{StaticResource TimeList}" ItemContainerStyle="{StaticResource TimeListItem}" Width="54" Height="186"/>
+                                <TextBlock Text=":" Foreground="#A1AAB4" FontFamily="Consolas" FontSize="16" VerticalAlignment="Center" Margin="4,0"/>
+                                <ListBox x:Name="PART_MinuteList" Style="{StaticResource TimeList}" ItemContainerStyle="{StaticResource TimeListItem}" Width="54" Height="186"/>
+                                <TextBlock Text=":" Foreground="#A1AAB4" FontFamily="Consolas" FontSize="16" VerticalAlignment="Center" Margin="4,0"/>
+                                <ListBox x:Name="PART_SecondList" Style="{StaticResource TimeList}" ItemContainerStyle="{StaticResource TimeListItem}" Width="54" Height="186"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+                </Grid>
+                <ControlTemplate.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="Effect"><Setter.Value><DropShadowEffect Color="#71E3BF" BlurRadius="4" ShadowDepth="0"/></Setter.Value></Setter></Trigger></ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="CalendarDay" TargetType="CalendarDayButton">
+            <Setter Property="Foreground" Value="#F0F2F4"/><Setter Property="Background" Value="Transparent"/>
+            <Setter Property="MinWidth" Value="32"/><Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CalendarDayButton">
+                <Border x:Name="Day" Background="{TemplateBinding Background}" CornerRadius="5" BorderThickness="1" BorderBrush="Transparent" Margin="2">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsInactive" Value="True"><Setter Property="Foreground" Value="#A1AAB4"/></Trigger>
+                    <Trigger Property="IsToday" Value="True"><Setter TargetName="Day" Property="BorderBrush" Value="#71E3BF"/></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Day" Property="Background" Value="#394753"/></Trigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="Day" Property="Background" Value="#71E3BF"/><Setter Property="Foreground" Value="#132920"/></Trigger>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Day" Property="BorderBrush" Value="#F0F2F4"/></Trigger>
+                    <Trigger Property="IsBlackedOut" Value="True"><Setter Property="Opacity" Value="0.4"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="CalendarMonth" TargetType="CalendarButton">
+            <Setter Property="Foreground" Value="#F0F2F4"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CalendarButton">
+                <Border x:Name="Month" Background="#20262D" CornerRadius="5" BorderThickness="1" BorderBrush="Transparent" Margin="3" Padding="8,14">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsInactive" Value="True"><Setter Property="Foreground" Value="#A1AAB4"/></Trigger>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Month" Property="Background" Value="#394753"/></Trigger>
+                    <Trigger Property="HasSelectedDays" Value="True"><Setter TargetName="Month" Property="Background" Value="#29433D"/></Trigger>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Month" Property="BorderBrush" Value="#71E3BF"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="CalendarSurface" TargetType="CalendarItem">
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CalendarItem">
+                <ControlTemplate.Resources>
+                    <DataTemplate x:Key="{x:Static CalendarItem.DayTitleTemplateResourceKey}"><TextBlock Text="{Binding}" Foreground="#A1AAB4" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="11"/></DataTemplate>
+                </ControlTemplate.Resources>
+                <Border x:Name="PART_Root" Background="#20262D" BorderBrush="#526171" BorderThickness="1" CornerRadius="8" Padding="10">
+                    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Grid Margin="0,0,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
+                            <Button x:Name="PART_PreviousButton" Content="‹" Padding="0" MinHeight="32" AutomationProperties.Name="上一个月或年份"/>
+                            <Button x:Name="PART_HeaderButton" Grid.Column="1" Padding="6,4" MinHeight="32" Margin="4,0"/>
+                            <Button x:Name="PART_NextButton" Grid.Column="2" Content="›" Padding="0" MinHeight="32" AutomationProperties.Name="下一个月或年份"/>
+                        </Grid>
+                        <Grid x:Name="PART_MonthView" Grid.Row="1">
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        </Grid>
+                        <Grid x:Name="PART_YearView" Grid.Row="1" Visibility="Hidden">
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        </Grid>
+                    </Grid>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <DataTrigger Binding="{Binding DisplayMode, RelativeSource={RelativeSource AncestorType=Calendar}}" Value="Year">
+                        <Setter TargetName="PART_MonthView" Property="Visibility" Value="Collapsed"/><Setter TargetName="PART_YearView" Property="Visibility" Value="Visible"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding DisplayMode, RelativeSource={RelativeSource AncestorType=Calendar}}" Value="Decade">
+                        <Setter TargetName="PART_MonthView" Property="Visibility" Value="Collapsed"/><Setter TargetName="PART_YearView" Property="Visibility" Value="Visible"/>
+                    </DataTrigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="DarkCalendar" TargetType="Calendar">
+            <Setter Property="Background" Value="#20262D"/><Setter Property="Foreground" Value="#F0F2F4"/>
+            <Setter Property="CalendarDayButtonStyle" Value="{StaticResource CalendarDay}"/>
+            <Setter Property="CalendarButtonStyle" Value="{StaticResource CalendarMonth}"/>
+            <Setter Property="CalendarItemStyle" Value="{StaticResource CalendarSurface}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Calendar"><StackPanel x:Name="PART_Root"><CalendarItem x:Name="PART_CalendarItem" Style="{TemplateBinding CalendarItemStyle}"/></StackPanel></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="DatePicker">
+            <Setter Property="Foreground" Value="#F0F2F4"/><Setter Property="Background" Value="#20262D"/>
+            <Setter Property="BorderBrush" Value="#414A56"/><Setter Property="MinHeight" Value="40"/>
+            <Setter Property="CalendarStyle" Value="{StaticResource DarkCalendar}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="DatePicker">
+                <Grid x:Name="PART_Root">
+                    <Border x:Name="DateBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7">
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="34"/></Grid.ColumnDefinitions>
+                            <DatePickerTextBox x:Name="PART_TextBox" Foreground="{TemplateBinding Foreground}" Background="Transparent" BorderThickness="0" Padding="10,8" VerticalContentAlignment="Center" Focusable="True" CaretBrush="#71E3BF" SelectionBrush="#3D7967" ContextMenu="{StaticResource TextEditMenu}">
+                                <DatePickerTextBox.Template><ControlTemplate TargetType="DatePickerTextBox">
+                                    <ScrollViewer x:Name="PART_ContentHost"/>
+                                </ControlTemplate></DatePickerTextBox.Template>
+                            </DatePickerTextBox>
+                            <Button x:Name="PART_Button" Grid.Column="1" Padding="8" MinHeight="0" Background="Transparent" BorderBrush="Transparent" AutomationProperties.Name="打开日历">
+                                <Path Data="M 1 3 L 13 3 L 13 14 L 1 14 Z M 1 6 L 13 6 M 4 1 L 4 4 M 10 1 L 10 4" Stroke="#A1AAB4" StrokeThickness="1.3" Width="14" Height="15"/>
+                            </Button>
+                        </Grid>
+                    </Border>
+                    <Popup x:Name="PART_Popup" Placement="Bottom" StaysOpen="False" AllowsTransparency="True"/>
+                </Grid>
+                <ControlTemplate.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="DateBorder" Property="BorderBrush" Value="#71E3BF"/></Trigger></ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#20262D"/><Setter Property="Foreground" Value="#AAB4BF"/>
+            <Setter Property="Padding" Value="12,12"/><Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="BorderBrush" Value="#333B45"/><Setter Property="FontWeight" Value="Normal"/>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="Padding" Value="12,10"/><Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="DataGridCell">
+                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border>
+            </ControlTemplate></Setter.Value></Setter>
+            <Style.Triggers><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter Property="Background" Value="#31453F"/></Trigger></Style.Triggers>
+        </Style>
+        <Style TargetType="DataGridRow">
+            <Setter Property="Foreground" Value="#E0E5EA"/>
+            <Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#29433D"/></Trigger></Style.Triggers>
+        </Style>
+    </Window.Resources>
+    <Grid Background="#101316">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="188"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Border Background="#15191E" BorderBrush="#2B3139" BorderThickness="0,0,1,0">
+            <Grid Margin="16,28,16,20">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <StackPanel Margin="12,0,0,40">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="29" Height="29" Background="#71E3BF" CornerRadius="8" Margin="0,0,9,0">
+                            <Path Data="M 14.5 3 C 15 10 19 13.5 26 14.5 C 19 15.5 15 19 14.5 26 C 14 19 10 15.5 3 14.5 C 10 13.5 14 10 14.5 3 Z" Fill="#132920"/>
+                        </Border>
+                        <TextBlock Text="AI Assistant" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="Ai 小助手 · 陪你用好每一个 AI" TextWrapping="Wrap" Style="{StaticResource Caption}" FontSize="10" Margin="0,12,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="工作空间" Style="{StaticResource Caption}" Margin="15,0,0,12"/>
+                    <Button x:Name="OverviewButton" Style="{StaticResource Nav}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="◫" FontFamily="Segoe UI Symbol" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                            <TextBlock Text="用量概览" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="SessionsButton" Style="{StaticResource Nav}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="≡" FontFamily="Segoe UI Symbol" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                            <TextBlock Text="会话明细" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="SourcesButton" Style="{StaticResource Nav}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⊞" FontFamily="Segoe UI Symbol" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                            <TextBlock Text="数据源" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ClaudeSettingsButton" Style="{StaticResource Nav}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚙" FontFamily="Segoe UI Symbol" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ClaudeSettingsLabel" Text="配置修改" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel Grid.Row="3">
+                    <Button x:Name="RulesButton" Style="{StaticResource Nav}" Content="统计口径说明" Foreground="#A1AAB4"/>
+                    <Border Background="#1C2523" BorderBrush="#31483F" BorderThickness="1" CornerRadius="8" Padding="13" Margin="0,12,0,0">
+                        <StackPanel><TextBlock Text="●  用量仅在本机统计" Foreground="#71E3BF" FontSize="12"/><TextBlock Text="配置文件仅在本机读写" Style="{StaticResource Caption}" FontSize="10" Margin="0,7,0,0"/></StackPanel>
+                    </Border>
+                    <TextBlock Text="版本 1.2.2  /  Windows" Style="{StaticResource Caption}" FontSize="11" Margin="12,16,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+        <Grid Grid.Column="1" Margin="28,25,28,16">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid>
+                <StackPanel>
+                    <TextBlock x:Name="PageTitle" Text="用量概览" FontSize="27" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="PageSubtitle" Text="集中查看你的 AI 编程用量，了解缓存带来的复用效果。" Foreground="{StaticResource Muted}" Margin="0,8,0,0"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="ExportButton" Content="导出明细" Margin="0,0,10,0"/>
+                    <Button x:Name="RefreshButton" Content="刷新数据" Background="#71E3BF" Foreground="#132920" BorderBrush="#71E3BF" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Grid>
+            <StackPanel Grid.Row="1" Margin="0,25,0,18">
+                <WrapPanel x:Name="FiltersBar">
+                    <StackPanel Width="130" Margin="0,0,12,10">
+                        <TextBlock Text="平台" Style="{StaticResource Caption}" Margin="0,0,0,7"/>
+                        <ComboBox x:Name="PlatformFilter" SelectedIndex="0" AutomationProperties.Name="平台筛选">
+                            <ComboBoxItem Content="全部平台"/><ComboBoxItem Content="Codex"/><ComboBoxItem Content="Claude Code"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Width="130" Margin="0,0,12,10">
+                        <TextBlock Text="时间范围" Style="{StaticResource Caption}" Margin="0,0,0,7"/>
+                        <ComboBox x:Name="PeriodFilter" SelectedIndex="0" AutomationProperties.Name="时间范围">
+                            <ComboBoxItem Content="今天"/><ComboBoxItem Content="最近 7 天"/><ComboBoxItem Content="最近 30 天"/><ComboBoxItem Content="全部时间"/><ComboBoxItem Content="自定义时间"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,12,10">
+                        <TextBlock Text="开始时间" Style="{StaticResource Caption}" Margin="0,0,0,7"/>
+                        <StackPanel Orientation="Horizontal">
+                            <DatePicker x:Name="StartDate" Width="144" AutomationProperties.Name="开始日期"/>
+                            <ComboBox x:Name="StartTime" Style="{StaticResource TimeCombo}" Margin="6,0,0,0" AutomationProperties.Name="开始时间，时分秒"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,12,10">
+                        <TextBlock Text="结束时间" Style="{StaticResource Caption}" Margin="0,0,0,7"/>
+                        <StackPanel Orientation="Horizontal">
+                            <DatePicker x:Name="EndDate" Width="144" AutomationProperties.Name="结束日期"/>
+                            <ComboBox x:Name="EndTime" Style="{StaticResource TimeCombo}" Margin="6,0,0,0" AutomationProperties.Name="结束时间，时分秒"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Width="240" Margin="0,0,0,10">
+                        <TextBlock Text="搜索" Style="{StaticResource Caption}" Margin="0,0,0,7"/>
+                        <Grid>
+                            <TextBox x:Name="SearchBox" AutomationProperties.Name="搜索项目、模型或会话" ToolTip="搜索项目、模型或会话 ID"/>
+                            <TextBlock x:Name="SearchHint" Text="搜索项目、模型或会话…" Foreground="{StaticResource Muted}" IsHitTestVisible="False" Margin="13,0,0,0" VerticalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </WrapPanel>
+                <TextBlock Text="本地时间 · 24 小时制（HH:mm:ss）· 包含起止秒内的记录" Style="{StaticResource Caption}"/>
+            </StackPanel>
+            <StackPanel Grid.Row="2">
+                <Border x:Name="Notice" Visibility="Collapsed" Background="#352A1D" BorderBrush="#79623F" BorderThickness="1" CornerRadius="7" Padding="12,9" Margin="0,0,0,14">
+                    <TextBlock x:Name="NoticeText" Foreground="#F1C997"/>
+                </Border>
+            </StackPanel>
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
+                <StackPanel>
+                    <StackPanel x:Name="OverviewPanels">
+                        <UniformGrid Columns="4" Margin="0,0,-12,18">
+                            <Border Style="{StaticResource Card}" Margin="0,0,12,0"><StackPanel>
+                                <TextBlock Text="总 Token 用量" Foreground="{StaticResource Muted}"/>
+                                <TextBlock x:Name="TotalValue" Text="—" FontFamily="Segoe UI" FontSize="34" FontWeight="SemiBold" Margin="0,12,0,9"/>
+                                <TextBlock x:Name="SessionCount" Text="正在读取本地记录" Style="{StaticResource Caption}"/>
+                            </StackPanel></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,12,0"><StackPanel>
+                                <TextBlock Text="输入 Token" Foreground="{StaticResource Muted}"/>
+                                <TextBlock x:Name="InputValue" Text="—" FontFamily="Segoe UI" FontSize="34" FontWeight="SemiBold" Margin="0,12,0,9"/>
+                                <TextBlock Text="包含缓存读取与缓存写入" Style="{StaticResource Caption}"/>
+                            </StackPanel></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,12,0"><StackPanel>
+                                <TextBlock Text="输出 Token" Foreground="{StaticResource Muted}"/>
+                                <TextBlock x:Name="OutputValue" Text="—" FontFamily="Segoe UI" FontSize="34" FontWeight="SemiBold" Margin="0,12,0,9"/>
+                                <TextBlock Text="按日志报告的输出量统计" Style="{StaticResource Caption}"/>
+                            </StackPanel></Border>
+                            <Border Style="{StaticResource Card}" Margin="0,0,12,0" BorderBrush="#36574C"><StackPanel>
+                                <TextBlock Text="缓存命中率" Foreground="{StaticResource Muted}"/>
+                                <TextBlock x:Name="HitValue" Text="—" Foreground="{StaticResource Green}" FontFamily="Segoe UI" FontSize="34" FontWeight="SemiBold" Margin="0,12,0,9"/>
+                                <TextBlock Text="缓存读取 / 全部输入" Style="{StaticResource Caption}"/>
+                            </StackPanel></Border>
+                        </UniformGrid>
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="285"/></Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource Card}"><Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="160"/></Grid.RowDefinitions>
+                                <TextBlock Text="用量趋势" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="ChartCaption" Grid.Row="1" Style="{StaticResource Caption}" Text="每日 Token · 按本地时区" Margin="0,7,0,12"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <TextBlock x:Name="CodexLegend" Text="━ Codex" Foreground="{StaticResource Green}" Margin="0,0,15,0"/>
+                                    <TextBlock x:Name="ClaudeLegend" Text="━ Claude Code" Foreground="{StaticResource Orange}"/>
+                                </StackPanel>
+                                <Canvas x:Name="TrendCanvas" Grid.Row="2" ClipToBounds="True" AutomationProperties.Name="每日 Token 用量趋势"/>
+                            </Grid></Border>
+                            <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel>
+                                <TextBlock Text="输入构成" FontSize="16" FontWeight="SemiBold"/>
+                                <TextBlock Text="观察输入中的缓存复用比例" Style="{StaticResource Caption}" Margin="0,7,0,20"/>
+                                <Grid x:Name="CompositionBar" Height="13" Margin="0,0,0,23"/>
+                                <Grid Margin="0,0,0,14"><TextBlock Text="●  普通输入" Foreground="#A7B5C9"/><TextBlock x:Name="NormalValue" HorizontalAlignment="Right"/></Grid>
+                                <Grid Margin="0,0,0,14"><TextBlock Text="●  缓存读取" Foreground="{StaticResource Green}"/><TextBlock x:Name="ReadValue" HorizontalAlignment="Right"/></Grid>
+                                <Grid Margin="0,0,0,14"><TextBlock Text="●  缓存写入" Foreground="{StaticResource Orange}"/><TextBlock x:Name="WriteValue" HorizontalAlignment="Right"/></Grid>
+                                <TextBlock Text="缓存写入不计为缓存命中。" Style="{StaticResource Caption}" Margin="0,3,0,0"/>
+                            </StackPanel></Border>
+                        </Grid>
+                        <UniformGrid x:Name="PlatformCards" Columns="2" Margin="0,0,-16,18">
+                            <Border x:Name="CodexCard" Style="{StaticResource Card}" Margin="0,0,16,0"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="Codex" FontFamily="Segoe UI" Foreground="{StaticResource Green}" FontWeight="SemiBold" FontSize="17"/><TextBlock x:Name="CodexDetail" Style="{StaticResource Caption}" Margin="0,9,0,0"/></StackPanel>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock x:Name="CodexTotal" FontFamily="Segoe UI" FontSize="22" HorizontalAlignment="Right"/><TextBlock x:Name="CodexHit" Style="{StaticResource Caption}" Margin="0,5,0,0" HorizontalAlignment="Right"/></StackPanel>
+                            </Grid></Border>
+                            <Border x:Name="ClaudeCard" Style="{StaticResource Card}" Margin="0,0,16,0"><Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="Claude Code" FontFamily="Segoe UI" Foreground="{StaticResource Orange}" FontWeight="SemiBold" FontSize="17"/><TextBlock x:Name="ClaudeDetail" Style="{StaticResource Caption}" Margin="0,9,0,0"/></StackPanel>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Right"><TextBlock x:Name="ClaudeTotal" FontFamily="Segoe UI" FontSize="22" HorizontalAlignment="Right"/><TextBlock x:Name="ClaudeHit" Style="{StaticResource Caption}" Margin="0,5,0,0" HorizontalAlignment="Right"/></StackPanel>
+                            </Grid></Border>
+                        </UniformGrid>
+                    </StackPanel>
+                    <Border Style="{StaticResource Card}" Padding="0">
+                        <StackPanel>
+                            <Grid Margin="20,18"><TextBlock Text="会话明细" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="TableCount" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
+                            <DataGrid x:Name="SessionsGrid" Height="245" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                                      CanUserResizeRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#292F37"
+                                      Background="#191D22" RowBackground="#191D22" AlternatingRowBackground="#1C2026" BorderThickness="0"
+                                      SelectionMode="Single" SelectionUnit="FullRow" EnableRowVirtualization="True" RowDetailsVisibilityMode="Collapsed"
+                                      AutomationProperties.Name="会话用量明细，双击查看详情">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="平台" Binding="{Binding Platform}" Width="115"/>
+                                    <DataGridTextColumn Header="项目" Binding="{Binding Project}" Width="*" MinWidth="130"/>
+                                    <DataGridTextColumn Header="模型" Binding="{Binding Model}" Width="*" MinWidth="145"/>
+                                    <DataGridTextColumn Header="Token 总量" Binding="{Binding TotalText}" SortMemberPath="Total" Width="130"/>
+                                    <DataGridTextColumn Header="命中率" Binding="{Binding HitRate}" SortMemberPath="HitRateValue" Width="95"/>
+                                    <DataGridTextColumn Header="最近活动" Binding="{Binding LastText}" SortMemberPath="Last" Width="120"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <TextBlock x:Name="EmptyText" Text="此范围没有用量记录。试试“全部时间”，或检查数据源目录。" Foreground="{StaticResource Muted}" Margin="20,14" Visibility="Collapsed"/>
+                            <Grid Margin="20,12"><TextBlock Text="双击会话或按 Enter 查看用量详情" Style="{StaticResource Caption}"/><Button x:Name="DetailButton" Content="查看所选会话" HorizontalAlignment="Right" Padding="10,5" MinHeight="28" FontSize="11"/></Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+            <Grid Grid.Row="4" Margin="0,13,0,0">
+                <TextBlock x:Name="StatusText" Text="正在准备读取本地用量记录…" Style="{StaticResource Caption}" AutomationProperties.LiveSetting="Polite"/>
+                <TextBlock Text="统计来自本地日志 · 非账单金额" HorizontalAlignment="Right" Style="{StaticResource Caption}"/>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>
