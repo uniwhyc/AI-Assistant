@@ -7,7 +7,7 @@
 
 ## 快速开始
 
-1. **获取程序**：从项目的 Release 页面下载 `Ai小助手-便携版-日期.zip`（由构建者运行 `.\build.ps1 -Package` 生成，见 [发布 Release](#发布-release)）。小白只需要 zip，不需要克隆项目。
+1. **获取程序**：从项目的 Release 页面下载 `AI-Assistant-日期.zip`（由构建者运行 `.\build.ps1 -Package` 生成，见 [发布 Release](#发布-release)）。小白只需要 zip，不需要克隆项目。
 2. **解压双击**：解压到任意目录（如桌面），双击 `AI Assistant.exe` 即可使用，无需安装。`AI Assistant.exe` 与同目录的 `AI Assistant.exe.config` 保持在一起，不要单独移动 exe。需要 Windows 10 / 11（自带 .NET Framework 4.8）。
 3. **数据从哪来**：首次打开自动读取当前用户的 `.codex/sessions`、`.codex/archived_sessions` 和 `.claude/projects`（包含 Claude Code 子代理记录）；支持 `CODEX_HOME`、`CLAUDE_CONFIG_DIR` 环境变量。日志不在默认位置时，在侧栏“数据源”中指定其他目录。
 
@@ -129,7 +129,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Test
 
 仓库只含源码与文档（`.gitignore` 已排除 `bin/`、`artifacts/`、`release/`、`scripts/` 与临时文件）。发版流程：
 
-1. 运行 `.\build.ps1 -Test -Package`，全部测试通过后生成 `release/Ai小助手-便携版-日期.zip`。
+1. 运行 `.\build.ps1 -Test -Package`，全部测试通过后生成 `release/AI-Assistant-日期.zip`。
 2. 把 zip 上传为 GitHub/Gitee Release 附件。小白用户点附件下载解压即用，无需克隆仓库。
 
 ### 离屏渲染

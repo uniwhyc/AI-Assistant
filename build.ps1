@@ -66,7 +66,7 @@ Ai 小助手 · 陪你用好每一个 AI
 删除整个文件夹即可，不留系统痕迹。
 '@
     [System.IO.File]::WriteAllText((Join-Path $packageDir '使用说明.txt'), $guide, (New-Object System.Text.UTF8Encoding($true)))
-    $zip = Join-Path $releaseDir ('Ai小助手-便携版-' + (Get-Date -Format 'yyyyMMdd') + '.zip')
+    $zip = Join-Path $releaseDir ('AI-Assistant-' + (Get-Date -Format 'yyyyMMdd') + '.zip')
     # 只打包这三个文件：避免把用户运行后生成的 claude-configs、codex-configs
     # 等运行时目录（可能含真实密钥）卷进 zip。
     Compress-Archive -Path (Join-Path $packageDir 'AI Assistant.exe'), (Join-Path $packageDir 'AI Assistant.exe.config'), (Join-Path $packageDir '使用说明.txt') -DestinationPath $zip -Force
