@@ -1,9 +1,21 @@
 # Ai 小助手
 
-“Ai 小助手 · 陪你用好每一个 AI”。统计 Codex 与 Claude Code 本地 Token 用量、缓存命中率的 Windows 原生桌面程序，支持修改 Codex 与 Claude Code 的官方配置文件。深色仪表盘，青绿色区分 Codex，暖橙色区分 Claude Code。用量统计无需 API Key，无网络请求，无第三方依赖。可执行文件名为 `AI Assistant.exe`。
+“Ai 小助手 · 陪你用好每一个 AI”：统计 Codex 与 Claude Code 本地 Token 用量、缓存命中率，并修改两者官方配置文件的 Windows 桌面程序。
 
-- 不熟悉技术？看 [快速开始](#快速开始)，按步骤操作即可。
-- 准备二次开发？直接看 [开发者指南](#开发者指南)。
+**无需 API Key · 不联网 · 无第三方依赖 · 解压即用**
+
+![用量概览界面（Codex 平台视角，测试数据）](screenshots/usage-overview.png)
+
+## 目录
+
+- [快速开始](#快速开始)
+- [会动你电脑上的什么？](#会动你电脑上的什么)
+- [主要功能](#主要功能)
+- [常见问题](#常见问题)
+- [修改配置](#修改配置)
+- [配置修改详解](#配置修改详解)
+- [统计口径](#统计口径)
+- [开发者指南](#开发者指南)
 
 ## 快速开始
 
@@ -11,32 +23,32 @@
 2. **解压双击**：解压到任意目录（如桌面），双击 `AI Assistant.exe` 即可使用，无需安装。`AI Assistant.exe` 与同目录的 `AI Assistant.exe.config` 保持在一起，不要单独移动 exe。需要 Windows 10 / 11（自带 .NET Framework 4.8）。
 3. **数据从哪来**：首次打开自动读取当前用户的 `.codex/sessions`、`.codex/archived_sessions` 和 `.claude/projects`（包含 Claude Code 子代理记录）；支持 `CODEX_HOME`、`CLAUDE_CONFIG_DIR` 环境变量。日志不在默认位置时，在侧栏“数据源”中指定其他目录。
 
-四个侧栏入口：
-
-- **用量概览**：总 Token、输入、输出、缓存命中率，Codex / Claude Code 对比与趋势图。
-- **会话明细**：按项目、模型、会话 ID 搜索（Ctrl+F），Enter 查看会话详情，导出 CSV。
-- **数据源**：指定日志目录；设置保存在 `%LOCALAPPDATA%/AI Assistant/settings.json`。
-- **配置修改**：编辑 Codex / Claude Code 的官方配置，见 [修改配置](#修改配置)。
-
 ## 会动你电脑上的什么？
 
-程序启动与日常浏览只读取不写入：只读解析用量日志，不写注册表、不上传数据、无网络请求。只有你主动操作时才会写入：
+程序启动与日常浏览只读取不写入：只读解析用量日志，不保存对话正文，不写注册表、不上传数据、无网络请求。Windows 原生的“保存文件”“浏览目录”对话框与启动失败提示遵循系统主题，程序不会修改 Windows 的全局主题设置。只有你主动操作时才会写入：
 
 - “数据源”保存：`%LOCALAPPDATA%\AI Assistant\settings.json`（仅存两个目录路径）。
 - “配置修改”→“仅保存”：exe 旁的 `claude-configs\`、`codex-configs\` 文件夹（首次保存时创建）。
 - “配置修改”→“保存并启用”：重写 Codex `config.toml` / Claude Code `settings.json`，并在旁生成 `.ai-assistant.original.bak`（首次原始备份）与 `.ai-assistant.bak`（上一份）。
-- CSV 导出：写入你自己选择的保存位置。
+- CSV 导出：写入你自己选择的保存位置；CSV 包含项目路径、模型和会话 ID，分享前可自行检查。
 
 卸载 = 删除整个解压文件夹，不留系统痕迹；配置备份留在原位置，便于找回修改前的官方配置。
 
 ## 主要功能
 
-- **用量统计**：总 Token、输入、输出、缓存命中率与输入构成。
-- **平台对比**：Codex / Claude Code 对比与按日期趋势；较长范围自动按多天合计。切换平台立即更新统计卡、趋势图、图例、平台卡片与会话明细，并保留时间和搜索条件。
+四个侧栏入口：
+
+- **用量概览**：总 Token、输入、输出、缓存命中率与输入构成；Codex / Claude Code 对比与按日期趋势（青绿色区分 Codex，暖橙色区分 Claude Code），较长范围自动按多天合计。切换平台立即更新统计卡、趋势图、图例、平台卡片与会话明细，并保留时间和搜索条件。
+- **会话明细**：按项目、模型、会话 ID 搜索（Ctrl+F），Enter 查看会话详情（F5 手动刷新），导出当前筛选结果为带 UTF-8 BOM 的 CSV。
+- **数据源**：指定日志目录；设置保存在 `%LOCALAPPDATA%/AI Assistant/settings.json`。
+- **配置修改**：编辑 Codex / Claude Code 的官方配置，见 [修改配置](#修改配置)。
+
+跨入口能力：
+
 - **时间筛选**：今天、最近 7 天、最近 30 天、全部时间、自定义时间（精确到秒）；预设范围自动填充起止时间，均采用本机时区。
-- **搜索与导出**：按项目、模型、会话 ID 搜索（Ctrl+F），Enter 查看会话详情（F5 手动刷新）；导出当前筛选结果为带 UTF-8 BOM 的 CSV。
-- **修改配置**：侧栏“配置修改”可编辑 Codex `config.toml` 与 Claude Code `settings.json`，见 [修改配置](#修改配置)。
 - **体验细节**：后台扫描与进度提示；无数据、无权限、损坏记录提示；深色配色与 Windows 深色标题栏；关闭数据源设置后恢复当前页面的导航标记和焦点。
+
+![配置修改窗口（测试数据）](screenshots/config-window.png)
 
 ## 常见问题
 
@@ -62,23 +74,29 @@
 
 *进阶参考：日常改配置不必读本节，以下为备份、删除保护与校验范围的完整规则。*
 
-配置窗口使用完整宽度编辑。Codex 的模型 ID 填写到顶层 `model`；Claude Code 请根据服务商文档，将模型 ID 手动填写到 `model` 或 `env` 中相应模型配置。
+### 编辑要点
 
-Claude Code 环境变量使用顶层 `env` 对象，值必须为字符串；程序会拒绝误写为 `.env` 的字段，以及拼错的 `ANTOROPIC_BASE_URL`。官方接口地址变量为 `ANTHROPIC_BASE_URL`，`ANTHROPIC_API_KEY` 用于 API Key 认证，`ANTHROPIC_AUTH_TOKEN` 用于 Bearer 认证。
+- 配置窗口使用完整宽度编辑。Codex 的模型 ID 填写到顶层 `model`；Claude Code 请根据服务商文档，将模型 ID 手动填写到 `model` 或 `env` 中相应模型配置。
+- Claude Code 环境变量使用顶层 `env` 对象，值必须为字符串；程序会拒绝误写为 `.env` 的字段，以及拼错的 `ANTOROPIC_BASE_URL`。官方接口地址变量为 `ANTHROPIC_BASE_URL`，`ANTHROPIC_API_KEY` 用于 API Key 认证，`ANTHROPIC_AUTH_TOKEN` 用于 Bearer 认证。
+- Codex 常用顶层字段为 `model`、`model_provider`、`approval_policy` 与 `sandbox_mode`（取值通常为 read-only、workspace-write 或 danger-full-access）；写在 `[section]` 表内的这些字段不会作为顶层配置生效，检查时会提示。
 
-Codex 常用顶层字段为 `model`、`model_provider`、`approval_policy` 与 `sandbox_mode`（取值通常为 read-only、workspace-write 或 danger-full-access）；写在 `[section]` 表内的这些字段不会作为顶层配置生效，检查时会提示。
+### 写入与备份
 
 程序原样写入编辑器中的全文，保留字段顺序、缩进和内容，不自动合并旧字段、补充认证信息或修改模型。没有代理接管或请求转发。每套配置由用户自行按官方格式填写。
 
 首次切换前将原文件完整保留到同目录 `settings.json.ai-assistant.original.bak`（Codex 为 `config.toml.ai-assistant.original.bak`），包括原始换行和 BOM；之后的切换不覆盖此备份。“恢复原配置”可恢复首次切换前的文件。每次替换还将上一份文件保留到 `settings.json.ai-assistant.bak`（Codex 为 `config.toml.ai-assistant.bak`）。首次创建目标文件时没有原文件可备份。新配置语法或基本类型错误时拒绝写入；原文件即使损坏也会原样备份，允许用有效新配置替换。切换后请重新打开对应平台的会话，项目级配置、命令行选项和环境变量仍可能影响生效结果。
 
+### 配置保存位置
+
 每套配置保存为 `AI Assistant.exe` 所在目录下的 `claude-configs/<配置名称>.json` 或 `codex-configs/<配置名称>.toml`，当前构建对应 `bin/claude-configs` 与 `bin/codex-configs`，不受启动时工作目录影响。文件内容就是官方格式，没有自定义包装或加密结构。选择已保存配置后可修改名称和内容，点击“仅保存”或“保存并启用”时重命名文件并保存内容；名称冲突时不会覆盖其他配置。重命名保留原有删除权限，原有配置改名后仍不可删除；已有备份保留，改名前的配置内容另存到新名称的 `.json.bak` 或 `.toml.bak`。新建时不允许覆盖同名配置。移动程序时一并携带这两个文件夹及其中的备份、创建记录。
+
+### 删除保护
 
 只有由程序新建并具有创建记录的配置，才能点击“删除配置”并确认移除；未保存的编辑内容也会丢弃。原有配置、手动放入的文件及没有创建记录的旧版配置均禁止删除，编辑保存也不会取得删除权限。程序通过同目录的 `.ai-assistant-created` 后缀文件记录来源，不向官方配置文件添加字段。删除不改变对应平台当前生效配置，也不删除已有备份。未选择配置或正在新建时，删除按钮不可用。
 
-“检查格式”对 Claude Code 校验标准 JSON 语法、重复字段及 `env`、`model`、`permissions`、`hooks` 等常用字段的基本类型；对 Codex 用手写检查器校验 TOML 基本语法（注释、表头、字符串、数值、内联数组与表等）、重复键及常用字段类型，不实现完整 TOML 规范。均不实现完整官方 Schema 校验；其他配置项以官方文档及实际读取结果为准。配置中填写的密钥会按原文保存在配置文件及备份中，请勿提交或分享这些文件。自行编写脚本时建议使用不纳入版本控制的 `.env` 并通过环境变量读取密钥；本程序不自动加载 `.env`，也不替换 JSON 中的变量占位符。
+### 校验范围
 
-自动测试只向 `artifacts/claude-tests`、`artifacts/codex-tests` 下的隔离目录写入测试配置，不修改真实配置。界面预览输出到 `artifacts/claude-providers.png` 与 `artifacts/codex-providers.png`。
+“检查格式”对 Claude Code 校验标准 JSON 语法、重复字段及 `env`、`model`、`permissions`、`hooks` 等常用字段的基本类型；对 Codex 用手写检查器校验 TOML 基本语法（注释、表头、字符串、数值、内联数组与表等）、重复键及常用字段类型，不实现完整 TOML 规范。均不实现完整官方 Schema 校验；其他配置项以官方文档及实际读取结果为准。配置中填写的密钥会按原文保存在配置文件及备份中，请勿提交或分享这些文件。自行编写脚本时建议使用不纳入版本控制的 `.env` 并通过环境变量读取密钥；本程序不自动加载 `.env`，也不替换 JSON 中的变量占位符。
 
 ## 统计口径
 
@@ -99,11 +117,7 @@ Codex 常用顶层字段为 `model`、`model_provider`、`approval_policy` 与 `
 
 可直接选择日期，并按 `HH:mm:ss` 修改时间；手动修改会自动切换为“自定义时间”，刷新数据保留手动范围。包含起止秒内的全部记录，例如结束时间 `10:30:15` 包含 `10:30:15.999`，不包含 `10:30:16`。无效输入或开始晚于结束会提示并暂停导出。趋势图仍按天汇总，但只包含筛选范围内的记录。
 
-Windows 原生“保存文件”“浏览目录”对话框以及启动失败时的系统提示遵循系统主题；程序不会修改 Windows 的全局主题设置。
-
 Codex 累计计数回退时采用 `last_token_usage`，缺失则跳过并提示。首个累计快照会整体计入；截断日志或分叉继承的首个累计值可能包含此前用量，应核对原始记录。缓存统计基于当前本机日志字段，不代表真实账单、订阅余额或其他设备用量。日志格式变化可能需要适配。
-
-只读访问源日志；解析过程不保存对话正文。CSV 包含项目路径、模型和会话 ID，分享前可自行检查。
 
 ## 开发者指南
 
@@ -115,7 +129,7 @@ Codex 累计计数回退时采用 `last_token_usage`，缺失则跳过并提示�
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Test
 ```
 
-23 项统计测试覆盖累计差分、重复快照、流式合并、跨日时区、秒级边界、缓存写入、加权命中率、损坏日志、32 位以上计数、筛选聚合和导出转义。70 项离屏界面检查覆盖平台展示联动、默认今天、预设起止时间联动、手动范围保留、输入构成比例、无效日期与时间、空结果、日历导航、视图切换及数据源操作后的导航标记和焦点恢复，并生成今天预览 `artifacts/filters-today.png`、最近七天预览 `artifacts/filters-seven-days.png` 和最小窗口预览 `artifacts/compact-fixture.png`（使用测试数据）。配置修改检查覆盖双平台存储、备份恢复、格式校验与界面切换（Claude 141 项、Codex 66 项），只在隔离目录写入。
+23 项统计测试覆盖累计差分、重复快照、流式合并、跨日时区、秒级边界、缓存写入、加权命中率、损坏日志、32 位以上计数、筛选聚合和导出转义。70 项离屏界面检查覆盖平台展示联动、默认今天、预设起止时间联动、手动范围保留、输入构成比例、无效日期与时间、空结果、日历导航、视图切换及数据源操作后的导航标记和焦点恢复，并生成今天预览 `artifacts/filters-today.png`、最近七天预览 `artifacts/filters-seven-days.png` 和最小窗口预览 `artifacts/compact-fixture.png`（使用测试数据）。配置修改检查覆盖双平台存储、备份恢复、格式校验与界面切换（Claude 141 项、Codex 66 项），只在隔离目录写入，配置界面预览输出到 `artifacts/claude-providers.png` 与 `artifacts/codex-providers.png`。
 
 构建成功后直接运行 `bin/AI Assistant.exe` 即可使用；修改统计逻辑后建议重新运行上述命令。按以下清单手动验证各功能：
 
