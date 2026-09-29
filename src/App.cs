@@ -308,8 +308,8 @@ namespace AI_Assistant
         {
             var row = Find<DataGrid>("SessionsGrid").SelectedItem as SessionRow;
             if (row == null) return;
-            ShowText("会话详情", String.Format("{0}\n{1}\n\n项目：{2}\n模型：{3}\n最近活动：{4:yyyy-MM-dd HH:mm:ss}\n\n总 Token：{5:N0}\n普通输入：{6:N0}\n缓存读取：{7:N0}\n缓存写入：{8:N0}\n输出：{9:N0}\n缓存命中率：{10}\n\n以上数值仅包含当前筛选范围内的记录。",
-                row.Platform, row.Session, row.ProjectPath, row.Model, row.Last, row.Total, row.Input, row.CacheRead, row.CacheWrite, row.Output, row.HitRate));
+            ShowText("会话详情", String.Format("{0}\n{1}\n\n项目：{2}\n模型：{3}\n最近活动：{4:yyyy-MM-dd HH:mm:ss}\n用户请求：{5:N0} 次（你发出的消息）\n工具调用：{6:N0} 次（模型发起的调用）\n\n总 Token：{7:N0}\n普通输入：{8:N0}\n缓存读取：{9:N0}\n缓存写入：{10:N0}\n输出：{11:N0}\n缓存命中率：{12}\n\n以上数值仅包含当前筛选范围内的记录。",
+                row.Platform, row.Session, row.ProjectPath, row.Model, row.Last, row.UserRequests, row.ToolCalls, row.Total, row.Input, row.CacheRead, row.CacheWrite, row.Output, row.HitRate));
         }
 
         void Export()

@@ -26,6 +26,29 @@ public static class UsageTests
                 cache_read_input_tokens = read, cache_creation_input_tokens = write, output_tokens = output,
                 cache_creation = new { ephemeral_5m_input_tokens = write }, output_tokens_details = new { thinking_tokens = output / 2 } } } });
     }
+    static string ClaudeUser(string text, string time, string uuid, bool meta = false, bool sidechain = false)
+    {
+        return Line(new { type = "user", timestamp = time, sessionId = "claude-session", uuid = uuid,
+            isMeta = meta, isSidechain = sidechain, message = new { role = "user", content = text } });
+    }
+    static string ClaudeUserBlocks(object[] blocks, string time, string uuid)
+    {
+        return Line(new { type = "user", timestamp = time, sessionId = "claude-session", uuid = uuid,
+            message = new { role = "user", content = blocks } });
+    }
+    static string ClaudeAssistantTools(string id, int tools, long output, string time)
+    {
+        var blocks = new object[tools]; for (int i = 0; i < tools; i++) blocks[i] = new { type = "tool_use", name = "Bash" };
+        return Line(new { type = "assistant", timestamp = time, sessionId = "claude-session", requestId = "req-1",
+            message = new { id = id, model = "测试模型", content = blocks, usage = new { input_tokens = 10, output_tokens = output } } });
+    }
+    static string CodexUser(string time, string text)
+    {
+        return Line(new { timestamp = time, type = "response_item", payload = new { type = "message", role = "user",
+            content = new object[] { new { type = "input_text", text = text } } } });
+    }
+    static string CodexCall(string kind, string time)
+    { return Line(new { timestamp = time, type = "response_item", payload = new { type = kind, name = "shell" } }); }
     static List<Usage> Parse(string platform, params string[] lines)
     { return UsageReader.Parse(new StringReader(String.Join("\n", lines)), platform, "fixture", new ScanResult()); }
     static void Equal<T>(T expected, T actual)
@@ -150,6 +173,46 @@ public static class UsageTests
             var rows = Parse("Claude Code", Claude("m1", 10, 20, 30, 40, "2026-09-13T01:00:00Z"), Claude("m2", 1, 2, 3, 4, "2026-09-13T01:01:00Z"));
             var session = Analytics.Sessions(rows).Single();
             Equal(110L, session.Total); Equal("测试项目", session.Project); Equal(44L, session.Output);
+        });
+        Test("Claude 用户文本消息计为用户请求", () => {
+            var rows = Parse("Claude Code", ClaudeUser("帮我改代码", "2026-09-13T01:00:00Z", "u-1"),
+                ClaudeUserBlocks(new object[] { new { type = "text", text = "继续" } }, "2026-09-13T01:01:00Z", "u-2"));
+            Equal(2, rows.Count); Equal(1L, rows[0].UserRequests); Equal(0L, rows[0].Total);
+            Equal(2L, Totals.From(rows).UserRequests);
+        });
+        Test("Claude 工具结果、元消息与子代理 prompt 不算用户请求", () => {
+            var rows = Parse("Claude Code",
+                ClaudeUserBlocks(new object[] { new { type = "tool_result", content = "结果" } }, "2026-09-13T01:00:00Z", "u-1"),
+                ClaudeUser("元消息", "2026-09-13T01:01:00Z", "u-2", true),
+                ClaudeUser("子代理任务", "2026-09-13T01:02:00Z", "u-3", false, true));
+            Equal(0, rows.Count);
+        });
+        Test("Claude 工具调用按 tool_use 块计数且流式快照取最大", () => {
+            var rows = Parse("Claude Code", ClaudeAssistantTools("m1", 1, 5, "2026-09-13T01:00:00Z"),
+                ClaudeAssistantTools("m1", 2, 9, "2026-09-13T01:00:01Z"));
+            var merged = UsageReader.Deduplicate(rows);
+            Equal(1, merged.Count); Equal(2L, merged[0].ToolCalls); Equal(9L, merged[0].Output);
+        });
+        Test("Codex 用户消息计入且环境上下文排除", () => {
+            var rows = Parse("Codex", CodexUser("2026-09-13T01:00:00Z", "帮我改代码"),
+                CodexUser("2026-09-13T01:01:00Z", "<environment_context><cwd>E:/x</cwd></environment_context>"));
+            Equal(1, rows.Count); Equal(1L, rows[0].UserRequests); Equal(0L, rows[0].ToolCalls);
+        });
+        Test("Codex 两种工具调用记录均计数", () => {
+            var rows = Parse("Codex", CodexCall("function_call", "2026-09-13T01:00:00Z"),
+                CodexCall("custom_tool_call", "2026-09-13T01:01:00Z"), CodexCall("reasoning", "2026-09-13T01:02:00Z"));
+            Equal(2, rows.Count); Equal(2L, Totals.From(rows).ToolCalls);
+        });
+        Test("Codex 归档与活动副本去重后请求计数不翻倍", () => {
+            string entry = CodexUser("2026-09-13T01:00:00Z", "帮我改代码");
+            var rows = Parse("Codex", entry).Concat(Parse("Codex", entry));
+            Equal(1L, Totals.From(UsageReader.Deduplicate(rows)).UserRequests);
+        });
+        Test("会话模型列表不受用户请求记录影响", () => {
+            var rows = Parse("Claude Code", ClaudeUser("你好", "2026-09-13T01:00:00Z", "u-1"),
+                Claude("m1", 10, 0, 0, 2, "2026-09-13T01:01:00Z"));
+            var session = Analytics.Sessions(rows).Single();
+            Equal("测试模型", session.Model); Equal(1L, session.UserRequests); Equal(0L, session.ToolCalls);
         });
         Test("计数超过 32 位整数仍准确", () => {
             var rows = Parse("Codex", Codex(4000000000L, 3000000000L, 500000000L, "2026-09-13T01:00:00Z"));

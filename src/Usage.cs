@@ -13,6 +13,7 @@ namespace AI_Assistant
         public string Key, Platform, Session, Project, Model;
         public DateTimeOffset Time;
         public long Input, CacheRead, CacheWrite, Output;
+        public long UserRequests, ToolCalls;
         public long AllInput { get { return Input + CacheRead + CacheWrite; } }
         public long Total { get { return AllInput + Output; } }
     }
@@ -65,6 +66,18 @@ namespace AI_Assistant
             return new long[] { Number(obj, "input_tokens"), Number(obj, "cached_input_tokens"),
                 Number(obj, "cache_write_input_tokens"), Number(obj, "output_tokens") };
         }
+        static System.Collections.IEnumerable List(Dictionary<string, object> obj, string key)
+        { return Get(obj, key) as System.Collections.IEnumerable; }
+        static bool Flag(Dictionary<string, object> obj, string key)
+        { object value = Get(obj, key); return value is bool && (bool)value; }
+        static bool IsEnvironmentContext(Dictionary<string, object> payload)
+        {
+            var blocks = List(payload, "content");
+            if (blocks == null) return false;
+            foreach (object block in blocks)
+                return Str(Map(block), "text", "").StartsWith("<environment_context>");
+            return false;
+        }
 
         public static List<Usage> Parse(TextReader reader, string platform, string fileKey, ScanResult report)
         {
@@ -96,6 +109,22 @@ namespace AI_Assistant
                     {
                         model = Str(payload, "model", model);
                         project = Str(payload, "cwd", project);
+                        continue;
+                    }
+                    if (type == "response_item")
+                    {
+                        // 用户消息与工具调用标记为零 Token 记录，Key 不含文件路径，归档副本经 Deduplicate 归一。
+                        string itemType = Str(payload, "type", "");
+                        bool isUserMessage = itemType == "message" && Str(payload, "role", "") == "user" && !IsEnvironmentContext(payload);
+                        bool isToolCall = itemType == "function_call" || itemType == "custom_tool_call";
+                        if (!isUserMessage && !isToolCall) continue;
+                        DateTimeOffset itemTime;
+                        if (!TryTime(obj, out itemTime)) { report.InvalidLines++; continue; }
+                        records.Add(new Usage {
+                            Key = "Codex|" + session + "|" + itemType + "|" + itemTime.ToString("o"),
+                            Platform = platform, Session = session, Project = project, Model = "", Time = itemTime,
+                            UserRequests = isUserMessage ? 1 : 0, ToolCalls = isToolCall ? 1 : 0
+                        });
                         continue;
                     }
                     if (type != "event_msg" || Str(payload, "type", "") != "token_count") continue;
@@ -134,6 +163,36 @@ namespace AI_Assistant
                 }
                 else
                 {
+                    if (type == "user")
+                    {
+                        // 只统计真实用户消息：排除元消息、压缩摘要、子代理 prompt 及工具结果回传。
+                        if (Flag(obj, "isMeta") || Flag(obj, "isCompactSummary") || Flag(obj, "isSidechain")) continue;
+                        var userMessage = Child(obj, "message");
+                        bool hasText = false, hasToolResult = false;
+                        object userContent = Get(userMessage, "content");
+                        if (userContent is string) hasText = ((string)userContent).Trim().Length > 0;
+                        else
+                        {
+                            var userBlocks = List(userMessage, "content");
+                            if (userBlocks != null)
+                                foreach (object block in userBlocks)
+                                {
+                                    string blockType = Str(Map(block), "type", "");
+                                    if (blockType == "text") hasText = true;
+                                    else if (blockType == "tool_result") hasToolResult = true;
+                                }
+                        }
+                        if (!hasText || hasToolResult) continue;
+                        DateTimeOffset userTime;
+                        if (!TryTime(obj, out userTime)) { report.InvalidLines++; continue; }
+                        string userSession = Str(obj, "sessionId", session);
+                        records.Add(new Usage {
+                            Key = "Claude Code|" + userSession + "|user|" + Str(obj, "uuid", fileKey + ":" + lineNumber),
+                            Platform = platform, Session = userSession, Project = Str(obj, "cwd", project),
+                            Model = "", Time = userTime, UserRequests = 1
+                        });
+                        continue;
+                    }
                     if (type != "assistant") continue;
                     var message = Child(obj, "message");
                     var usage = Child(message, "usage");
@@ -143,14 +202,20 @@ namespace AI_Assistant
                     string messageId = Str(message, "id", Str(obj, "uuid", fileKey + ":" + lineNumber));
                     string requestId = Str(obj, "requestId", "");
                     string sessionId = Str(obj, "sessionId", session);
+                    long toolCalls = 0;
+                    var contentBlocks = List(message, "content");
+                    if (contentBlocks != null)
+                        foreach (object block in contentBlocks)
+                            if (Str(Map(block), "type", "") == "tool_use") toolCalls++;
                     var item = new Usage {
                         Key = "Claude Code|" + sessionId + "|" + messageId + "|" + requestId,
                         Platform = platform, Session = sessionId, Project = Str(obj, "cwd", project),
                         Model = Str(message, "model", "未记录模型"), Time = timestamp,
                         Input = Number(usage, "input_tokens"), CacheRead = Number(usage, "cache_read_input_tokens"),
-                        CacheWrite = Number(usage, "cache_creation_input_tokens"), Output = Number(usage, "output_tokens")
+                        CacheWrite = Number(usage, "cache_creation_input_tokens"), Output = Number(usage, "output_tokens"),
+                        ToolCalls = toolCalls
                     };
-                    if (item.Total > 0) records.Add(item);
+                    if (item.Total > 0 || item.ToolCalls > 0) records.Add(item);
                 }
             }
             return records;
@@ -176,6 +241,8 @@ namespace AI_Assistant
                     existing.CacheRead = Math.Max(existing.CacheRead, item.CacheRead);
                     existing.CacheWrite = Math.Max(existing.CacheWrite, item.CacheWrite);
                     existing.Output = Math.Max(existing.Output, item.Output);
+                    existing.UserRequests = Math.Max(existing.UserRequests, item.UserRequests);
+                    existing.ToolCalls = Math.Max(existing.ToolCalls, item.ToolCalls);
                 }
             }
             return unique.Values.OrderBy(x => x.Time).ToList();
@@ -239,6 +306,7 @@ namespace AI_Assistant
     public sealed class Totals
     {
         public long Input, CacheRead, CacheWrite, Output;
+        public long UserRequests, ToolCalls;
         public int Sessions;
         public long AllInput { get { return Input + CacheRead + CacheWrite; } }
         public long Total { get { return AllInput + Output; } }
@@ -248,6 +316,7 @@ namespace AI_Assistant
             var items = source.ToList();
             return new Totals { Input = items.Sum(x => x.Input), CacheRead = items.Sum(x => x.CacheRead),
                 CacheWrite = items.Sum(x => x.CacheWrite), Output = items.Sum(x => x.Output),
+                UserRequests = items.Sum(x => x.UserRequests), ToolCalls = items.Sum(x => x.ToolCalls),
                 Sessions = items.Select(x => x.Platform + "|" + x.Session).Distinct().Count() };
         }
     }
@@ -265,6 +334,8 @@ namespace AI_Assistant
         public long CacheRead { get; set; }
         public long CacheWrite { get; set; }
         public long Output { get; set; }
+        public long UserRequests { get; set; }
+        public long ToolCalls { get; set; }
         public string HitRate { get; set; }
         public double? HitRateValue { get { return Input + CacheRead + CacheWrite == 0 ? (double?)null : (double)CacheRead / (Input + CacheRead + CacheWrite); } }
         public string LastText { get { return Last.ToString("MM-dd HH:mm"); } }
@@ -288,11 +359,13 @@ namespace AI_Assistant
             return source.GroupBy(x => x.Platform + "|" + x.Session).Select(group => {
                 var last = group.OrderBy(x => x.Time).Last();
                 var total = Totals.From(group);
+                // 用户请求标记记录不带模型，过滤空值避免拼入模型列表。
+                var models = group.Select(x => x.Model).Where(m => !String.IsNullOrEmpty(m)).Distinct().ToList();
                 return new SessionRow { Platform = last.Platform, Session = last.Session, ProjectPath = last.Project,
                     Project = last.Project.TrimEnd('\\', '/').Split('\\', '/').Last(),
-                    Model = String.Join(" / ", group.Select(x => x.Model).Distinct()), Last = last.Time.LocalDateTime,
+                    Model = models.Count > 0 ? String.Join(" / ", models) : "未记录模型", Last = last.Time.LocalDateTime,
                     Total = total.Total, Input = total.Input, CacheRead = total.CacheRead, CacheWrite = total.CacheWrite,
-                    Output = total.Output, HitRate = total.HitRate };
+                    Output = total.Output, UserRequests = total.UserRequests, ToolCalls = total.ToolCalls, HitRate = total.HitRate };
             }).OrderByDescending(x => x.Last).ToList();
         }
     }

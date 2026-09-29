@@ -39,7 +39,7 @@
 四个侧栏入口：
 
 - **用量概览**：总 Token、输入、输出、缓存命中率与输入构成；Codex / Claude Code 对比与按日期趋势（青绿色区分 Codex，暖橙色区分 Claude Code），较长范围自动按多天合计。切换平台立即更新统计卡、趋势图、图例、平台卡片与会话明细，并保留时间和搜索条件。
-- **会话明细**：按项目、模型、会话 ID 搜索（Ctrl+F），Enter 查看会话详情（F5 手动刷新），导出当前筛选结果为带 UTF-8 BOM 的 CSV。
+- **会话明细**：按项目、模型、会话 ID 搜索（Ctrl+F），Enter 查看会话详情（含用户请求与工具调用次数，F5 手动刷新），导出当前筛选结果为带 UTF-8 BOM 的 CSV。
 - **数据源**：指定日志目录；设置保存在 `%LOCALAPPDATA%/AI Assistant/settings.json`。
 - **配置修改**：编辑 Codex / Claude Code 的官方配置，见 [修改配置](#修改配置)。
 
@@ -113,6 +113,8 @@
 
 缓存写入不算命中。命中率先汇总 Token 再计算，不平均各会话百分比。零输入显示“—”。输出中的推理子项、缓存写入的时效子项不重复累加。
 
+会话详情中的用户请求与工具调用按发起方区分：用户请求统计真实用户消息——Claude Code 为不含工具结果、非元消息、非子代理 prompt 的 `user` 记录，Codex 为 `role` 为 user 的 `message` 记录（排除 `<environment_context>` 环境注入）；工具调用统计模型侧发起——Claude Code 为 assistant 消息中的 `tool_use` 块（含子代理，与 Token 口径一致），Codex 为 `function_call` 与 `custom_tool_call` 记录。两项计数与 Token 一样只包含当前筛选范围内的记录。
+
 起止时间始终显示在平台筛选所在的筛选栏中，采用本机时区。默认“今天”为当天 `00:00:00–23:59:59`；选择“最近 7 天”时自动更新为六天前零点至今天结束，“最近 30 天”为二十九天前零点至今天结束，“全部时间”从最早记录日期开始。
 
 可直接选择日期，并按 `HH:mm:ss` 修改时间；手动修改会自动切换为“自定义时间”，刷新数据保留手动范围。包含起止秒内的全部记录，例如结束时间 `10:30:15` 包含 `10:30:15.999`，不包含 `10:30:16`。无效输入或开始晚于结束会提示并暂停导出。趋势图仍按天汇总，但只包含筛选范围内的记录。
@@ -129,7 +131,7 @@ Codex 累计计数回退时采用 `last_token_usage`，缺失则跳过并提示�
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Test
 ```
 
-23 项统计测试覆盖累计差分、重复快照、流式合并、跨日时区、秒级边界、缓存写入、加权命中率、损坏日志、32 位以上计数、筛选聚合和导出转义。70 项离屏界面检查覆盖平台展示联动、默认今天、预设起止时间联动、手动范围保留、输入构成比例、无效日期与时间、空结果、日历导航、视图切换及数据源操作后的导航标记和焦点恢复，并生成今天预览 `artifacts/filters-today.png`、最近七天预览 `artifacts/filters-seven-days.png` 和最小窗口预览 `artifacts/compact-fixture.png`（使用测试数据）。配置修改检查覆盖双平台存储、备份恢复、格式校验与界面切换（Claude 141 项、Codex 66 项），只在隔离目录写入，配置界面预览输出到 `artifacts/claude-providers.png` 与 `artifacts/codex-providers.png`。
+30 项统计测试覆盖累计差分、重复快照、流式合并、跨日时区、秒级边界、缓存写入、加权命中率、损坏日志、32 位以上计数、筛选聚合、导出转义、用户请求与工具调用计数。70 项离屏界面检查覆盖平台展示联动、默认今天、预设起止时间联动、手动范围保留、输入构成比例、无效日期与时间、空结果、日历导航、视图切换及数据源操作后的导航标记和焦点恢复，并生成今天预览 `artifacts/filters-today.png`、最近七天预览 `artifacts/filters-seven-days.png` 和最小窗口预览 `artifacts/compact-fixture.png`（使用测试数据）。配置修改检查覆盖双平台存储、备份恢复、格式校验与界面切换（Claude 141 项、Codex 66 项），只在隔离目录写入，配置界面预览输出到 `artifacts/claude-providers.png` 与 `artifacts/codex-providers.png`。
 
 构建成功后直接运行 `bin/AI Assistant.exe` 即可使用；修改统计逻辑后建议重新运行上述命令。按以下清单手动验证各功能：
 
