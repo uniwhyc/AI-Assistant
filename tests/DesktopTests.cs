@@ -246,6 +246,7 @@ public static class DesktopTests
             Find<TextBox>(desktop, "SearchBox").Clear(); desktop.Apply();
             Find<ComboBox>(desktop, "PlatformFilter").SelectedIndex = 0;
             Render(desktop, "artifacts/projects.png", 1360, 910);
+            Check(Find<DataGrid>(desktop, "ProjectsGrid").ActualHeight < 200, "项目排行网格随行数自适应不留空白");
             var projectGrid = Find<DataGrid>(desktop, "ProjectsGrid");
             projectGrid.SelectedIndex = 0;
             projectGrid.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Control.MouseDoubleClickEvent });
@@ -253,12 +254,36 @@ public static class DesktopTests
             Check(Find<TextBox>(desktop, "SearchBox").Text == "E:/测试项目", "会话页搜索框填入项目完整路径");
             Check(Find<DataGrid>(desktop, "SessionsGrid").Items.Count == 1
                 && ((SessionRow)Find<DataGrid>(desktop, "SessionsGrid").Items[0]).Project == "测试项目", "会话页仅列出该项目会话");
+            Layout(desktop, 1360, 910);
+            Check(Find<DataGrid>(desktop, "SessionsGrid").ActualHeight < 200, "会话页网格随行数自适应不留空白");
+            Find<Button>(desktop, "ProjectsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(Find<TextBox>(desktop, "SearchBox").Text == "", "回到项目页清除双击跳转的搜索条件");
+            desktop.Apply();
+            Check(Find<DataGrid>(desktop, "ProjectsGrid").Items.Count == 2, "清除搜索后项目排行恢复全部");
+            Find<Button>(desktop, "SessionsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(Find<TextBox>(desktop, "SearchBox").Text == "", "再进会话明细无残留搜索");
+            Find<TextBox>(desktop, "SearchBox").Text = "测试项目"; desktop.Apply();
+            Find<Button>(desktop, "ProjectsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(Find<TextBox>(desktop, "SearchBox").Text == "测试项目", "手动搜索切到项目页不被清除");
+            Find<Button>(desktop, "SessionsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(Find<TextBox>(desktop, "SearchBox").Text == "测试项目", "手动搜索切回会话页仍保留");
             Find<TextBox>(desktop, "SearchBox").Clear(); desktop.Apply();
             Find<Button>(desktop, "OverviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(Find<StackPanel>(desktop, "ProjectPanels").Visibility == Visibility.Collapsed
                 && Find<Border>(desktop, "SessionsCard").Visibility == Visibility.Visible, "切回概览隐藏项目面板恢复会话表格");
             Render(desktop, "artifacts/compact-fixture.png", 1100, 710);
             Check(Find<Canvas>(desktop, "TrendCanvas").ActualWidth > 200, "最小窗口保留趋势绘图空间");
+            var contentScroll = Find<ScrollViewer>(desktop, "ContentScroll");
+            Check(contentScroll.ScrollableHeight > 0, "小窗口下页面整体可滚动");
+            contentScroll.ScrollToVerticalOffset(0);
+            Find<DataGrid>(desktop, "SessionsGrid").RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, -120) { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+            contentScroll.UpdateLayout();
+            Check(contentScroll.VerticalOffset > 0, "表格未能滚动时滚轮传给页面继续滚动");
+            contentScroll.ScrollToVerticalOffset(0);
+            contentScroll.UpdateLayout();
+            Find<DataGrid>(desktop, "ProjectsGrid").RaiseEvent(new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, -120) { RoutedEvent = UIElement.PreviewMouseWheelEvent });
+            contentScroll.UpdateLayout();
+            Check(contentScroll.VerticalOffset > 0, "项目表格未能滚动时滚轮传给页面继续滚动");
             var settingsContent = (StackPanel)Find<Button>(desktop, "ClaudeSettingsButton").Content;
             Check(Find<TextBlock>(desktop, "ClaudeSettingsLabel").Text == "配置修改"
                 && settingsContent.Children.OfType<TextBlock>().Any(icon => icon.Text == "⚙" && icon.Width == 26),

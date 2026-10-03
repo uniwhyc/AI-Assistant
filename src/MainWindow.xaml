@@ -441,7 +441,7 @@
                     <TextBlock x:Name="NoticeText" Foreground="#F1C997"/>
                 </Border>
             </StackPanel>
-            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
+            <ScrollViewer x:Name="ContentScroll" Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
                 <StackPanel>
                     <StackPanel x:Name="OverviewPanels">
                         <UniformGrid Columns="4" Margin="0,0,-12,18">
@@ -505,7 +505,7 @@
                         <Border Style="{StaticResource Card}" Padding="0">
                             <StackPanel>
                                 <Grid Margin="20,18"><TextBlock Text="项目用量排行" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="ProjectCount" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
-                                <DataGrid x:Name="ProjectsGrid" Height="490" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                                <DataGrid x:Name="ProjectsGrid" MaxHeight="490" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
                                           CanUserResizeRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#292F37"
                                           Background="#191D22" RowBackground="#191D22" AlternatingRowBackground="#1C2026" BorderThickness="0"
                                           SelectionMode="Single" SelectionUnit="FullRow" EnableRowVirtualization="True" RowDetailsVisibilityMode="Collapsed"
@@ -526,7 +526,7 @@
                     <Border x:Name="SessionsCard" Style="{StaticResource Card}" Padding="0">
                         <StackPanel>
                             <Grid Margin="20,18"><TextBlock Text="会话明细" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="TableCount" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
-                            <DataGrid x:Name="SessionsGrid" Height="245" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                            <DataGrid x:Name="SessionsGrid" MaxHeight="490" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
                                       CanUserResizeRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#292F37"
                                       Background="#191D22" RowBackground="#191D22" AlternatingRowBackground="#1C2026" BorderThickness="0"
                                       SelectionMode="Single" SelectionUnit="FullRow" EnableRowVirtualization="True" RowDetailsVisibilityMode="Collapsed"

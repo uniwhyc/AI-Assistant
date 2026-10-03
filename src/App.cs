@@ -32,6 +32,8 @@ namespace AI_Assistant
         List<SessionRow> sessions = new List<SessionRow>();
         List<ProjectRow> projects = new List<ProjectRow>();
         static readonly string[] NavButtons = { "OverviewButton", "SessionsButton", "ProjectsButton" };
+        // 由项目统计双击跳转产生的搜索条件（完整路径），仅在回到项目统计页时清除，不影响用户手动搜索。
+        string jumpSearch;
         string selectedPlatform = "全部平台";
         bool ready, busy, syncingRange, syncingLists;
         DateTime? rangeStart;
@@ -72,6 +74,8 @@ namespace AI_Assistant
             Find<DataGrid>("SessionsGrid").MouseDoubleClick += (s, e) => Details();
             Find<DataGrid>("SessionsGrid").KeyDown += (s, e) => { if (e.Key == Key.Enter) { Details(); e.Handled = true; } };
             Find<DataGrid>("ProjectsGrid").MouseDoubleClick += (s, e) => OpenProject();
+            Find<DataGrid>("SessionsGrid").PreviewMouseWheel += ForwardWheel;
+            Find<DataGrid>("ProjectsGrid").PreviewMouseWheel += ForwardWheel;
             Find<ComboBox>("PlatformFilter").SelectionChanged += (s, e) => Apply();
             Find<ComboBox>("PeriodFilter").SelectionChanged += (s, e) => { SyncPreset(); Apply(); };
             Find<DatePicker>("StartDate").SelectedDateChanged += (s, e) => TimeRangeEdited();
@@ -80,6 +84,7 @@ namespace AI_Assistant
             WireTimeCombo(Find<ComboBox>("EndTime"));
             Find<TextBox>("SearchBox").TextChanged += (s, e) => {
                 Find<TextBlock>("SearchHint").Visibility = Find<TextBox>("SearchBox").Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+                if (jumpSearch != null && Find<TextBox>("SearchBox").Text != jumpSearch) jumpSearch = null;
                 searchTimer.Stop(); searchTimer.Start();
             };
             searchTimer.Tick += (s, e) => { searchTimer.Stop(); Apply(); };
@@ -152,12 +157,18 @@ namespace AI_Assistant
             Find<StackPanel>("OverviewPanels").Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
             Find<StackPanel>("ProjectPanels").Visibility = page == 2 ? Visibility.Visible : Visibility.Collapsed;
             Find<Border>("SessionsCard").Visibility = page == 2 ? Visibility.Collapsed : Visibility.Visible;
-            Find<DataGrid>("SessionsGrid").Height = page == 1 ? 490 : 245;
+            Find<DataGrid>("SessionsGrid").MaxHeight = page == 1 ? 490 : 245;
             for (int i = 0; i < NavButtons.Length; i++)
             {
                 bool selected = i == page;
                 Find<Button>(NavButtons[i]).Background = Brush(selected ? "#243A33" : "Transparent");
                 Find<Button>(NavButtons[i]).Foreground = Brush(selected ? "#71E3BF" : "#B8C1CB");
+            }
+            // 回到项目统计页时清除上次双击项目跳转留下的搜索条件，避免残留。
+            if (page == 2 && jumpSearch != null)
+            {
+                jumpSearch = null;
+                Find<TextBox>("SearchBox").Text = "";
             }
         }
 
@@ -337,9 +348,27 @@ namespace AI_Assistant
             var row = Find<DataGrid>("ProjectsGrid").SelectedItem as ProjectRow;
             if (row == null) return;
             Navigate(1);
+            jumpSearch = row.ProjectPath;
             Find<TextBox>("SearchBox").Text = row.ProjectPath;
             Apply();
             Find<TextBox>("SearchBox").Focus();
+        }
+
+        // 鼠标在表格上滚动时，表格自身滚到边界或行数不足后，把滚轮交给外层页面，保证页面能继续上下滚动。
+        void ForwardWheel(object sender, MouseWheelEventArgs e)
+        {
+            var grid = (DataGrid)sender;
+            var inner = grid.Template == null ? null : grid.Template.FindName("DG_ScrollViewer", grid) as ScrollViewer;
+            if (inner != null && inner.ScrollableHeight > 0.5)
+            {
+                bool atEdge = e.Delta > 0 ? inner.VerticalOffset <= 0.5 : inner.VerticalOffset >= inner.ScrollableHeight - 0.5;
+                if (!atEdge) return; // 表格内部还能滚动，交给表格自己处理。
+            }
+            e.Handled = true;
+            // 与外层 ScrollViewer 的原生滚轮手感一致：一格 120 delta 滚动 系统行数 × 16 像素。
+            double lines = SystemParameters.WheelScrollLines > 0 ? SystemParameters.WheelScrollLines : 3;
+            var outer = Find<ScrollViewer>("ContentScroll");
+            outer.ScrollToVerticalOffset(outer.VerticalOffset - e.Delta / 120.0 * lines * 16);
         }
 
         void Export()
