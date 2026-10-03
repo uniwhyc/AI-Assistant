@@ -71,6 +71,7 @@ namespace AI_Assistant
             Find<Button>("DetailButton").Click += (s, e) => Details();
             Find<DataGrid>("SessionsGrid").MouseDoubleClick += (s, e) => Details();
             Find<DataGrid>("SessionsGrid").KeyDown += (s, e) => { if (e.Key == Key.Enter) { Details(); e.Handled = true; } };
+            Find<DataGrid>("ProjectsGrid").MouseDoubleClick += (s, e) => OpenProject();
             Find<ComboBox>("PlatformFilter").SelectionChanged += (s, e) => Apply();
             Find<ComboBox>("PeriodFilter").SelectionChanged += (s, e) => { SyncPreset(); Apply(); };
             Find<DatePicker>("StartDate").SelectedDateChanged += (s, e) => TimeRangeEdited();
@@ -328,6 +329,17 @@ namespace AI_Assistant
                 : "claude --resume " + row.Session;
             ShowText("会话详情", String.Format("{0}\n\n项目：{1}\n模型：{2}\n最近活动：{3:yyyy-MM-dd HH:mm:ss}\n用户请求：{4:N0} 次（你发出的消息）\n工具调用：{5:N0} 次（模型发起的调用）\n\n总 Token：{6:N0}\n普通输入：{7:N0}\n缓存读取：{8:N0}\n缓存写入：{9:N0}\n输出：{10:N0}\n缓存命中率：{11}\n\n以上数值仅包含当前筛选范围内的记录。",
                 resume, row.ProjectPath, row.Model, row.Last, row.UserRequests, row.ToolCalls, row.Total, row.Input, row.CacheRead, row.CacheWrite, row.Output, row.HitRate));
+        }
+
+        // 双击项目行：跳到会话明细并精确搜索该项目（用完整路径匹配），即可查看其全部会话。
+        void OpenProject()
+        {
+            var row = Find<DataGrid>("ProjectsGrid").SelectedItem as ProjectRow;
+            if (row == null) return;
+            Navigate(1);
+            Find<TextBox>("SearchBox").Text = row.ProjectPath;
+            Apply();
+            Find<TextBox>("SearchBox").Focus();
         }
 
         void Export()

@@ -246,6 +246,14 @@ public static class DesktopTests
             Find<TextBox>(desktop, "SearchBox").Clear(); desktop.Apply();
             Find<ComboBox>(desktop, "PlatformFilter").SelectedIndex = 0;
             Render(desktop, "artifacts/projects.png", 1360, 910);
+            var projectGrid = Find<DataGrid>(desktop, "ProjectsGrid");
+            projectGrid.SelectedIndex = 0;
+            projectGrid.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Control.MouseDoubleClickEvent });
+            Check(Find<TextBlock>(desktop, "PageTitle").Text == "会话明细", "双击项目跳到会话明细");
+            Check(Find<TextBox>(desktop, "SearchBox").Text == "E:/测试项目", "会话页搜索框填入项目完整路径");
+            Check(Find<DataGrid>(desktop, "SessionsGrid").Items.Count == 1
+                && ((SessionRow)Find<DataGrid>(desktop, "SessionsGrid").Items[0]).Project == "测试项目", "会话页仅列出该项目会话");
+            Find<TextBox>(desktop, "SearchBox").Clear(); desktop.Apply();
             Find<Button>(desktop, "OverviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(Find<StackPanel>(desktop, "ProjectPanels").Visibility == Visibility.Collapsed
                 && Find<Border>(desktop, "SessionsCard").Visibility == Visibility.Visible, "切回概览隐藏项目面板恢复会话表格");

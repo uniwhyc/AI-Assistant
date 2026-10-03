@@ -519,6 +519,7 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <TextBlock x:Name="ProjectsEmpty" Text="此范围没有用量记录。试试“全部时间”，或检查数据源目录。" Foreground="{StaticResource Muted}" Margin="20,14" Visibility="Collapsed"/>
+                                <Grid Margin="20,12"><TextBlock Text="双击项目查看其会话" Style="{StaticResource Caption}"/></Grid>
                             </StackPanel>
                         </Border>
                     </StackPanel>
