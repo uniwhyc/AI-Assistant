@@ -188,5 +188,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build.ps1 -Test
 - `tests/ClaudeProviderTests.cs`：隔离目录下的 Claude 配置切换与界面检查。
 - `tests/CodexProviderTests.cs`：隔离目录下的 Codex 配置存储、TOML 校验与双平台切换检查。
 - `tests/UsageTests.cs`：内存构造日志的回归测试。
+- `tests/DesktopTests.cs`：离屏界面检查，覆盖筛选联动、导航与项目页，并输出 artifacts 下的界面预览。
+- `tests/NewConfigSim.cs`、`tests/RealUserSim.cs`：UI Automation 模拟器，在隔离沙箱中驱动打包版程序回归真实用户操作（手动编译运行，不随 `build.ps1 -Test` 编译）。
 - `tools/make-icon.cs`：应用图标生成器（System.Drawing 绘制四角星，输出多尺寸 ICO）。
+- `tools/scan-bench.cs`：扫描性能基准，合成接近真实规模的日志并测量 `UsageReader.Scan` 耗时。
 - `build.ps1`：编译、测试与便携版打包入口。
