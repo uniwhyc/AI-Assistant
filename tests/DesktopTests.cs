@@ -209,7 +209,7 @@ public static class DesktopTests
             Check(Find<StackPanel>(desktop, "OverviewPanels").Visibility == Visibility.Collapsed, "会话导航切换视图");
             Find<Button>(desktop, "OverviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(Find<StackPanel>(desktop, "OverviewPanels").Visibility == Visibility.Visible, "概览导航恢复视图");
-            foreach (string page in new[] { "OverviewButton", "SessionsButton" })
+            foreach (string page in new[] { "OverviewButton", "SessionsButton", "ProjectsButton" })
             {
                 var selected = Find<Button>(desktop, page);
                 selected.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -223,7 +223,32 @@ public static class DesktopTests
                 Check(((SolidColorBrush)selected.Background).Color == (Color)ColorConverter.ConvertFromString("#243A33")
                     && ((SolidColorBrush)sourceButton.Background).Color == Colors.Transparent, "仅当前页面保留选中标记：" + title);
             }
+            Find<Button>(desktop, "ProjectsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(Find<StackPanel>(desktop, "ProjectPanels").Visibility == Visibility.Visible
+                && Find<StackPanel>(desktop, "OverviewPanels").Visibility == Visibility.Collapsed
+                && Find<Border>(desktop, "SessionsCard").Visibility == Visibility.Collapsed, "项目页只显示项目排行面板");
+            Check(Find<TextBlock>(desktop, "PageTitle").Text == "项目用量统计", "项目页标题正确");
+            var projectsGrid = Find<DataGrid>(desktop, "ProjectsGrid");
+            Check(projectsGrid.Items.Count == 2, "最近七天项目排行含两个项目");
+            var topProject = (ProjectRow)projectsGrid.Items[0];
+            Check(topProject.Project == "测试项目" && topProject.Total == 130L && topProject.Sessions == 1
+                && topProject.HitRate == (0.7).ToString("P1"), "项目排行按总量降序且首行聚合正确");
+            Check(((ProjectRow)projectsGrid.Items[1]).Project == "另一项目" && ((ProjectRow)projectsGrid.Items[1]).Total == 110L,
+                "次行项目聚合正确");
+            Check(Find<TextBlock>(desktop, "ProjectCount").Text.Contains("2 个项目"), "项目页显示项目总数");
+            Check(Find<TextBlock>(desktop, "ProjectsEmpty").Visibility == Visibility.Collapsed, "有数据时项目空态隐藏");
+            Find<ComboBox>(desktop, "PlatformFilter").SelectedIndex = 1;
+            Check(Find<DataGrid>(desktop, "ProjectsGrid").Items.Count == 1
+                && ((ProjectRow)Find<DataGrid>(desktop, "ProjectsGrid").Items[0]).Project == "测试项目", "平台筛选同步项目排行");
+            Find<TextBox>(desktop, "SearchBox").Text = "另一项目"; desktop.Apply();
+            Check(Find<DataGrid>(desktop, "ProjectsGrid").Items.Count == 0
+                && Find<TextBlock>(desktop, "ProjectsEmpty").Visibility == Visibility.Visible, "搜索空结果在项目页显示提示");
+            Find<TextBox>(desktop, "SearchBox").Clear(); desktop.Apply();
+            Find<ComboBox>(desktop, "PlatformFilter").SelectedIndex = 0;
+            Render(desktop, "artifacts/projects.png", 1360, 910);
             Find<Button>(desktop, "OverviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(Find<StackPanel>(desktop, "ProjectPanels").Visibility == Visibility.Collapsed
+                && Find<Border>(desktop, "SessionsCard").Visibility == Visibility.Visible, "切回概览隐藏项目面板恢复会话表格");
             Render(desktop, "artifacts/compact-fixture.png", 1100, 710);
             Check(Find<Canvas>(desktop, "TrendCanvas").ActualWidth > 200, "最小窗口保留趋势绘图空间");
             var settingsContent = (StackPanel)Find<Button>(desktop, "ClaudeSettingsButton").Content;

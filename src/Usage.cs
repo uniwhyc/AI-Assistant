@@ -342,6 +342,25 @@ namespace AI_Assistant
         public string TotalText { get { return Total.ToString("N0"); } }
     }
 
+    public sealed class ProjectRow
+    {
+        public string Project { get; set; }
+        public string ProjectPath { get; set; }
+        public DateTime Last { get; set; }
+        public int Sessions { get; set; }
+        public long Total { get; set; }
+        public long Input { get; set; }
+        public long CacheRead { get; set; }
+        public long CacheWrite { get; set; }
+        public long Output { get; set; }
+        public long UserRequests { get; set; }
+        public long ToolCalls { get; set; }
+        public string HitRate { get; set; }
+        public double? HitRateValue { get { return Input + CacheRead + CacheWrite == 0 ? (double?)null : (double)CacheRead / (Input + CacheRead + CacheWrite); } }
+        public string LastText { get { return Last.ToString("MM-dd HH:mm"); } }
+        public string TotalText { get { return Total.ToString("N0"); } }
+    }
+
     public static class Analytics
     {
         public static List<Usage> Filter(IEnumerable<Usage> source, string platform, DateTime? start, DateTime end, string query)
@@ -367,6 +386,32 @@ namespace AI_Assistant
                     Total = total.Total, Input = total.Input, CacheRead = total.CacheRead, CacheWrite = total.CacheWrite,
                     Output = total.Output, UserRequests = total.UserRequests, ToolCalls = total.ToolCalls, HitRate = total.HitRate };
             }).OrderByDescending(x => x.Last).ToList();
+        }
+        // 按项目聚合：跨平台同目录合并为一行，默认按 Token 总量降序（Top 排行）。
+        public static List<ProjectRow> Projects(IEnumerable<Usage> source)
+        {
+            return source.GroupBy(x => NormalizeProject(x.Project)).Select(group => {
+                var last = group.OrderBy(x => x.Time).Last();
+                var total = Totals.From(group);
+                return new ProjectRow { Project = Basename(last.Project), ProjectPath = last.Project,
+                    Last = last.Time.LocalDateTime, Sessions = total.Sessions,
+                    Total = total.Total, Input = total.Input, CacheRead = total.CacheRead,
+                    CacheWrite = total.CacheWrite, Output = total.Output,
+                    UserRequests = total.UserRequests, ToolCalls = total.ToolCalls,
+                    HitRate = total.HitRate };
+            }).OrderByDescending(x => x.Total).ToList();
+        }
+        // 分组键：空值归入“未知项目”，去尾部分隔符、统一分隔符、大小写归一，避免同一目录拆成多行。
+        static string NormalizeProject(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path)) return "未知项目";
+            return path.TrimEnd('\\', '/').Replace('\\', '/').ToLowerInvariant();
+        }
+        // 显示名：取路径最后一段，保留原始大小写；空值显示“未知项目”。
+        static string Basename(string path)
+        {
+            if (String.IsNullOrWhiteSpace(path)) return "未知项目";
+            return path.TrimEnd('\\', '/').Split('\\', '/').Last();
         }
     }
 }

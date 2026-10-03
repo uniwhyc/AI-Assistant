@@ -229,6 +229,79 @@ public static class UsageTests
             var scan = UsageReader.Scan(new SourcePaths { Codex = missing, Claude = missing }, null);
             Equal(0, scan.Records.Count); Equal(2, scan.Warnings.Count);
         });
+        Test("项目聚合合并同目录多会话并精确求和", () => {
+            var rows = new[] {
+                new Usage { Key = "a", Platform = "Codex", Session = "codex-s1", Project = "E:/测试项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 1, 0, 0, TimeSpan.Zero), Input = 10, CacheRead = 20, Output = 5 },
+                new Usage { Key = "b", Platform = "Claude Code", Session = "claude-s1", Project = "E:/测试项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 2, 0, 0, TimeSpan.Zero), Input = 30, CacheRead = 0, Output = 15 } };
+            var proj = Analytics.Projects(rows).Single();
+            Equal("测试项目", proj.Project); Equal(80L, proj.Total); Equal(40L, proj.Input);
+            Equal(20L, proj.CacheRead); Equal(20L, proj.Output); Equal(2, proj.Sessions);
+            Equal(rows[1].Time.LocalDateTime, proj.Last);
+            Equal((20.0 / 60).ToString("P1"), proj.HitRate);
+        });
+        Test("项目分组键统一分隔符与尾斜杠", () => {
+            var rows = new[] {
+                new Usage { Key = "a", Platform = "Codex", Session = "s1", Project = "E:\\测试项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 2, 0, 0, TimeSpan.Zero), Input = 10 },
+                new Usage { Key = "b", Platform = "Codex", Session = "s2", Project = "E:/测试项目/",
+                    Time = new DateTimeOffset(2026, 9, 13, 1, 0, 0, TimeSpan.Zero), Input = 20 } };
+            var proj = Analytics.Projects(rows).Single();
+            Equal(30L, proj.Total); Equal("测试项目", proj.Project);
+            Equal("E:\\测试项目", proj.ProjectPath);
+        });
+        Test("项目分组键大小写不敏感且不误合并相近目录", () => {
+            var rows = new[] {
+                new Usage { Key = "a", Platform = "Codex", Session = "s1", Project = "E:\\Foo",
+                    Time = new DateTimeOffset(2026, 9, 13, 1, 0, 0, TimeSpan.Zero), Input = 10 },
+                new Usage { Key = "b", Platform = "Codex", Session = "s2", Project = "e:\\foo",
+                    Time = new DateTimeOffset(2026, 9, 13, 2, 0, 0, TimeSpan.Zero), Input = 20 },
+                new Usage { Key = "c", Platform = "Codex", Session = "s3", Project = "E:\\Foo2",
+                    Time = new DateTimeOffset(2026, 9, 13, 3, 0, 0, TimeSpan.Zero), Input = 40 } };
+            var proj = Analytics.Projects(rows);
+            Equal(2, proj.Count);
+            var merged = proj.Single(x => x.Project == "foo");
+            Equal(30L, merged.Total); Equal("e:\\foo", merged.ProjectPath);
+            Equal(40L, proj.Single(x => x.Project == "Foo2").Total);
+        });
+        Test("未知项目独立成组且空值兜底", () => {
+            var rows = new[] {
+                new Usage { Key = "a", Platform = "Codex", Session = "s1", Project = "未知项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 1, 0, 0, TimeSpan.Zero), Input = 10 },
+                new Usage { Key = "b", Platform = "Codex", Session = "s2", Project = "",
+                    Time = new DateTimeOffset(2026, 9, 13, 2, 0, 0, TimeSpan.Zero), Input = 20 },
+                new Usage { Key = "c", Platform = "Codex", Session = "s3", Project = null,
+                    Time = new DateTimeOffset(2026, 9, 13, 3, 0, 0, TimeSpan.Zero), Input = 40 } };
+            var proj = Analytics.Projects(rows).Single();
+            Equal("未知项目", proj.Project); Equal(70L, proj.Total); Equal(3, proj.Sessions);
+        });
+        Test("项目排行默认按 Token 总量降序", () => {
+            var rows = new[] {
+                new Usage { Key = "a", Platform = "Codex", Session = "s1", Project = "E:/小项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 1, 0, 0, TimeSpan.Zero), Input = 10 },
+                new Usage { Key = "b", Platform = "Codex", Session = "s2", Project = "E:/大项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 2, 0, 0, TimeSpan.Zero), Input = 90 } };
+            var proj = Analytics.Projects(rows);
+            Equal(2, proj.Count); Equal("大项目", proj[0].Project); Equal("小项目", proj[1].Project);
+        });
+        Test("项目命中率无输入显示破折号否则按 Token 加权", () => {
+            var zero = Analytics.Projects(new[] { new Usage { Key = "a", Platform = "Codex", Session = "s1",
+                Project = "E:/x", Time = new DateTimeOffset(2026, 9, 13, 1, 0, 0, TimeSpan.Zero), Output = 10 } }).Single();
+            Equal(true, zero.HitRateValue == null); Equal("—", zero.HitRate);
+            var one = Analytics.Projects(new[] { new Usage { Key = "b", Platform = "Codex", Session = "s2",
+                Project = "E:/x", Time = new DateTimeOffset(2026, 9, 13, 2, 0, 0, TimeSpan.Zero), Input = 10, CacheRead = 90, Output = 5 } }).Single();
+            Equal((0.9).ToString("P1"), one.HitRate); Equal(0.9, one.HitRateValue.Value);
+        });
+        Test("跨平台同名会话按平台去重计数", () => {
+            var rows = new[] {
+                new Usage { Key = "a", Platform = "Codex", Session = "s1", Project = "E:/同一项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 1, 0, 0, TimeSpan.Zero), Input = 10 },
+                new Usage { Key = "b", Platform = "Claude Code", Session = "s1", Project = "E:/同一项目",
+                    Time = new DateTimeOffset(2026, 9, 13, 2, 0, 0, TimeSpan.Zero), Input = 20 } };
+            var proj = Analytics.Projects(rows).Single();
+            Equal("同一项目", proj.Project); Equal(2, proj.Sessions); Equal(30L, proj.Total);
+        });
         Console.WriteLine(String.Format("\n测试结果：{0} 项通过，{1} 项失败。", passed, failed));
         return failed == 0 ? 0 : 1;
     }

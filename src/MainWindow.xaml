@@ -358,6 +358,12 @@
                             <TextBlock Text="会话明细" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
+                    <Button x:Name="ProjectsButton" Style="{StaticResource Nav}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="▤" FontFamily="Segoe UI Symbol" FontSize="15" Width="26" VerticalAlignment="Center"/>
+                            <TextBlock Text="项目统计" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button x:Name="SourcesButton" Style="{StaticResource Nav}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="⊞" FontFamily="Segoe UI Symbol" FontSize="15" Width="26" VerticalAlignment="Center"/>
@@ -495,7 +501,28 @@
                             </Grid></Border>
                         </UniformGrid>
                     </StackPanel>
-                    <Border Style="{StaticResource Card}" Padding="0">
+                    <StackPanel x:Name="ProjectPanels" Visibility="Collapsed" Margin="0,0,0,18">
+                        <Border Style="{StaticResource Card}" Padding="0">
+                            <StackPanel>
+                                <Grid Margin="20,18"><TextBlock Text="项目用量排行" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="ProjectCount" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
+                                <DataGrid x:Name="ProjectsGrid" Height="490" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                                          CanUserResizeRows="False" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#292F37"
+                                          Background="#191D22" RowBackground="#191D22" AlternatingRowBackground="#1C2026" BorderThickness="0"
+                                          SelectionMode="Single" SelectionUnit="FullRow" EnableRowVirtualization="True" RowDetailsVisibilityMode="Collapsed"
+                                          AutomationProperties.Name="项目用量排行，点击列标题排序">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="项目" Binding="{Binding Project}" Width="*" MinWidth="160"/>
+                                        <DataGridTextColumn Header="Token 总量" Binding="{Binding TotalText}" SortMemberPath="Total" Width="130"/>
+                                        <DataGridTextColumn Header="命中率" Binding="{Binding HitRate}" SortMemberPath="HitRateValue" Width="95"/>
+                                        <DataGridTextColumn Header="会话数" Binding="{Binding Sessions}" Width="90"/>
+                                        <DataGridTextColumn Header="最近活动" Binding="{Binding LastText}" SortMemberPath="Last" Width="120"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <TextBlock x:Name="ProjectsEmpty" Text="此范围没有用量记录。试试“全部时间”，或检查数据源目录。" Foreground="{StaticResource Muted}" Margin="20,14" Visibility="Collapsed"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <Border x:Name="SessionsCard" Style="{StaticResource Card}" Padding="0">
                         <StackPanel>
                             <Grid Margin="20,18"><TextBlock Text="会话明细" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="TableCount" Style="{StaticResource Caption}" HorizontalAlignment="Right" VerticalAlignment="Center"/></Grid>
                             <DataGrid x:Name="SessionsGrid" Height="245" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"

@@ -30,6 +30,8 @@ namespace AI_Assistant
         ScanResult result = new ScanResult();
         List<Usage> filtered = new List<Usage>();
         List<SessionRow> sessions = new List<SessionRow>();
+        List<ProjectRow> projects = new List<ProjectRow>();
+        static readonly string[] NavButtons = { "OverviewButton", "SessionsButton", "ProjectsButton" };
         string selectedPlatform = "全部平台";
         bool ready, busy, syncingRange, syncingLists;
         DateTime? rangeStart;
@@ -63,8 +65,9 @@ namespace AI_Assistant
             Find<Button>("SourcesButton").Click += (s, e) => Sources();
             Find<Button>("ClaudeSettingsButton").Click += (s, e) => ClaudeSettings();
             Find<Button>("RulesButton").Click += (s, e) => ShowText("统计口径", Rules);
-            Find<Button>("OverviewButton").Click += (s, e) => Navigate(false);
-            Find<Button>("SessionsButton").Click += (s, e) => Navigate(true);
+            Find<Button>("OverviewButton").Click += (s, e) => Navigate(0);
+            Find<Button>("SessionsButton").Click += (s, e) => Navigate(1);
+            Find<Button>("ProjectsButton").Click += (s, e) => Navigate(2);
             Find<Button>("DetailButton").Click += (s, e) => Details();
             Find<DataGrid>("SessionsGrid").MouseDoubleClick += (s, e) => Details();
             Find<DataGrid>("SessionsGrid").KeyDown += (s, e) => { if (e.Key == Key.Enter) { Details(); e.Handled = true; } };
@@ -84,7 +87,7 @@ namespace AI_Assistant
                 if (e.Key == Key.F5) { await Refresh(); e.Handled = true; }
                 if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control) { Find<TextBox>("SearchBox").Focus(); e.Handled = true; }
             };
-            Navigate(false);
+            Navigate(0);
             ready = true;
         }
 
@@ -136,17 +139,24 @@ namespace AI_Assistant
             Text("StatusText", String.Format("更新于 {0:HH:mm:ss}  ·  {1:N0} 个日志文件  ·  {2:N0} 条用量记录", DateTime.Now, result.Files, result.Records.Count));
         }
 
-        void Navigate(bool detail)
+        void Navigate(int page) // 0 用量概览 / 1 会话明细 / 2 项目统计
         {
-            Text("PageTitle", detail ? "会话明细" : "用量概览");
-            Text("PageSubtitle", detail ? "按项目、模型或会话检索，查看每次编程会话的用量。" : "集中查看你的 AI 编程用量，了解缓存带来的复用效果。");
-            Find<StackPanel>("OverviewPanels").Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
-            Find<DataGrid>("SessionsGrid").Height = detail ? 490 : 245;
-            foreach (string name in new[] { "OverviewButton", "SessionsButton" })
+            string[] titles = { "用量概览", "会话明细", "项目用量统计" };
+            string[] subtitles = {
+                "集中查看你的 AI 编程用量，了解缓存带来的复用效果。",
+                "按项目、模型或会话检索，查看每次编程会话的用量。",
+                "按项目聚合 Token、缓存命中率与会话数，查看 Top 项目排行。" };
+            Text("PageTitle", titles[page]);
+            Text("PageSubtitle", subtitles[page]);
+            Find<StackPanel>("OverviewPanels").Visibility = page == 0 ? Visibility.Visible : Visibility.Collapsed;
+            Find<StackPanel>("ProjectPanels").Visibility = page == 2 ? Visibility.Visible : Visibility.Collapsed;
+            Find<Border>("SessionsCard").Visibility = page == 2 ? Visibility.Collapsed : Visibility.Visible;
+            Find<DataGrid>("SessionsGrid").Height = page == 1 ? 490 : 245;
+            for (int i = 0; i < NavButtons.Length; i++)
             {
-                bool selected = (name == "SessionsButton") == detail;
-                Find<Button>(name).Background = Brush(selected ? "#243A33" : "Transparent");
-                Find<Button>(name).Foreground = Brush(selected ? "#71E3BF" : "#B8C1CB");
+                bool selected = i == page;
+                Find<Button>(NavButtons[i]).Background = Brush(selected ? "#243A33" : "Transparent");
+                Find<Button>(NavButtons[i]).Foreground = Brush(selected ? "#71E3BF" : "#B8C1CB");
             }
         }
 
@@ -276,6 +286,10 @@ namespace AI_Assistant
             Find<TextBlock>("EmptyText").Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             Find<Button>("ExportButton").IsEnabled = sessions.Count > 0;
             Find<Button>("DetailButton").IsEnabled = sessions.Count > 0;
+            projects = Analytics.Projects(filtered);
+            Find<DataGrid>("ProjectsGrid").ItemsSource = projects;
+            Text("ProjectCount", String.Format("{0} · 共 {1:N0} 个项目 · 点击列标题排序", selectedPlatform, projects.Count));
+            Find<TextBlock>("ProjectsEmpty").Visibility = projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             DrawChart();
         }
 
@@ -396,9 +410,10 @@ namespace AI_Assistant
 
         void RestorePageSelection()
         {
-            bool detail = Find<StackPanel>("OverviewPanels").Visibility == Visibility.Collapsed;
-            Navigate(detail);
-            var selected = Find<Button>(detail ? "SessionsButton" : "OverviewButton");
+            int page = Find<StackPanel>("ProjectPanels").Visibility == Visibility.Visible ? 2
+                : Find<StackPanel>("OverviewPanels").Visibility == Visibility.Visible ? 0 : 1;
+            Navigate(page);
+            var selected = Find<Button>(NavButtons[page]);
             FocusManager.SetFocusedElement(Window, selected);
             selected.Focus();
         }
