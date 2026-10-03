@@ -84,6 +84,35 @@ public static class ClaudeProviderTests
             service.Restore();
             Check(File.ReadAllBytes(service.SettingsPath).SequenceEqual(originalBytes), "恢复原配置逐字节还原首次切换前的文件");
             Check(File.ReadAllText(service.BackupPath) == b.Json, "恢复原配置前仍保留被替换的配置");
+
+            // 留档时机：首次打开配置界面即保存当时的生效文件；已有留档永不被覆盖。
+            var snapshot = Service("留档");
+            File.WriteAllText(snapshot.SettingsPath, original, new UTF8Encoding(true));
+            snapshot.PreserveOriginal();
+            Check(File.ReadAllBytes(snapshot.OriginalPath).SequenceEqual(originalBytes), "打开配置界面留档当时的原配置");
+            Check(!snapshot.CanRestore(), "生效文件与留档一致时无需恢复");
+            File.WriteAllText(snapshot.SettingsPath, b.Json);
+            Check(snapshot.CanRestore(), "生效文件偏离留档时恢复可用");
+            snapshot.PreserveOriginal();
+            Check(File.ReadAllBytes(snapshot.OriginalPath).SequenceEqual(originalBytes), "已有留档永不被覆盖");
+            // 生效文件被外部删除同样视为偏离留档：恢复仍可用并能整体还原。
+            var missing = Service("缺失");
+            File.WriteAllText(missing.SettingsPath, original, new UTF8Encoding(true));
+            missing.PreserveOriginal();
+            File.Delete(missing.SettingsPath);
+            Check(missing.CanRestore(), "生效文件被外部删除时恢复仍可用");
+            missing.Restore();
+            Check(File.ReadAllBytes(missing.SettingsPath).SequenceEqual(originalBytes), "缺失的生效文件可整体还原为留档原配置");
+            var emptySnapshot = Service("留档空");
+            emptySnapshot.PreserveOriginal();
+            Check(!File.Exists(emptySnapshot.OriginalPath) && !emptySnapshot.CanRestore(), "没有原配置时不伪造留档也不提供恢复");
+            // 读取原始配置：有留档取留档，尚无留档时回退当前生效文件。
+            var originalReader = Service("原配置读取");
+            Check(originalReader.ReadOriginal() == ClaudeProviders.Template, "没有留档也没有生效文件时读取原配置回退模板");
+            File.WriteAllText(originalReader.SettingsPath, original, new UTF8Encoding(true));
+            originalReader.PreserveOriginal();
+            File.WriteAllText(originalReader.SettingsPath, b.Json);
+            Check(originalReader.ReadOriginal() == original, "已切换配置后读取原配置仍返回首次留档内容");
             a.Json = "{ \"model\": \"haiku\" }\n"; service.Save(a, true);
             Check(service.Load().Count == 2 && File.ReadAllText(Path.Combine(service.ConfigDirectory, "配置甲.json")) == a.Json, "编辑已选配置更新原配置文件");
             var invalid = new[] { "", "{", "[]", "null", "{'model':'sonnet'}", "{model:\"sonnet\"}", "{\"env\":{},}",
@@ -101,6 +130,17 @@ public static class ClaudeProviderTests
             {
                 ClaudeProviders.Validate(json); Check(true, "接受标准 JSON 和未作限制的扩展字段");
             }
+            // 界面保存的美化：只重排空白，键序、字符串转义与数字原文逐字保留；结果稳定、可重复。
+            Check(ClaudeProviders.Pretty("{\"n\":-1.25e+2,\"a\":{\"x\":[1,true,null]},\"s\":\"含 {} 与 \\\"引号\\\"\"}")
+                == "{\n  \"n\": -1.25e+2,\n  \"a\": {\n    \"x\": [\n      1,\n      true,\n      null\n    ]\n  },\n  \"s\": \"含 {} 与 \\\"引号\\\"\"\n}\n",
+                "美化只重排缩进与换行，键序、字符串与数字原文不变");
+            Check(ClaudeProviders.Pretty("{ \"a\" : [ ] , \"b\" : { } }") == "{\n  \"a\": [],\n  \"b\": {}\n}\n",
+                "空对象与空数组保持紧凑，冒号逗号周围空白规范化");
+            Check(ClaudeProviders.Pretty(ClaudeProviders.Template) == ClaudeProviders.Template
+                && ClaudeProviders.Pretty(ClaudeProviders.Pretty("{ \"model\" : \"sonnet\" }")) == ClaudeProviders.Pretty("{ \"model\" : \"sonnet\" }"),
+                "已规范的官方模板与美化结果再次美化均逐字不变");
+            Check(ClaudeProviders.Pretty("{未完成") == "{未完成" && ClaudeProviders.Pretty("") == "" && ClaudeProviders.Pretty(null) == null,
+                "无法完整识别的内容原样返回，不干扰后续校验");
             using (var locked = new FileStream(service.SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 bool failed = false;
@@ -192,18 +232,30 @@ public static class ClaudeProviderTests
             var app = new Application(); var desktop = new Desktop();
             var uiService = Service("界面");
             File.WriteAllText(uiService.SettingsPath, original);
+            // 界面保存会把 JSON 重排为两空格缩进；以下为对应期望全文（a.Json 此时已是紧凑格式）。
+            string prettyA = ClaudeProviders.Pretty(a.Json);
+            string prettyB = ClaudeProviders.Pretty(b.Json);
             bool allowDelete = false;
             int confirmations = 0;
             string confirmedName = null;
+            bool allowDiscard = true, allowRestore = true;
+            int discardPrompts = 0, restorePrompts = 0;
             var panel = new ClaudeProvidersPanel(uiService, selectedName => {
                 confirmations++; confirmedName = selectedName; return allowDelete;
-            }) { Resources = desktop.Window.Resources };
+            }, () => { discardPrompts++; return allowDiscard; }, () => { restorePrompts++; return allowRestore; })
+            { Resources = desktop.Window.Resources };
             Layout(panel, 1020, 690);
             var editor = Field<TextBox>(panel, "Claude 官方配置 JSON");
             var name = Field<TextBox>(panel, "配置名称（保存为同名 JSON 文件）");
             Check(editor.Text == original, "打开编辑器直接参考当前配置全文");
+            Check(File.Exists(uiService.OriginalPath) && File.ReadAllBytes(uiService.OriginalPath).SequenceEqual(File.ReadAllBytes(uiService.SettingsPath)),
+                "打开配置界面即把当前原配置留档为原始备份");
             var deleteButton = Children(panel).OfType<Button>().First(button => Object.Equals(button.Content, "删除配置"));
             Check(!deleteButton.IsEnabled, "新建状态没有可删除的已保存配置");
+            var restoreButton = Children(panel).OfType<Button>().First(button => Object.Equals(button.Content, "恢复原配置"));
+            Check(!restoreButton.IsEnabled && restoreButton.ToolTip != null && restoreButton.ToolTip.ToString().Contains("无需恢复"),
+                "未偏离原配置时恢复入口禁用并说明原因");
+            Check(Field<ComboBox>(panel, "已保存的配置").ToolTip != null, "切换入口下拉框带操作说明");
             Check(!Children(panel).OfType<ClaudeModelsPanel>().Any(), "配置窗口不再显示模型查询面板");
             Check(editor.ActualWidth == panel.ActualWidth, "JSON 编辑区使用配置窗口的完整内容宽度");
             name.Text = "界面测试配置"; editor.Text = a.Json; Click(panel, "仅保存");
@@ -215,28 +267,37 @@ public static class ClaudeProviderTests
             Check(File.Exists(Path.Combine(uiService.ConfigDirectory, "界面测试配置.json")), "编辑名称时不立即改动文件");
             Click(panel, "仅保存");
             Check(!File.Exists(Path.Combine(uiService.ConfigDirectory, "界面测试配置.json"))
-                && File.ReadAllText(Path.Combine(uiService.ConfigDirectory, "重命名界面配置.json")) == a.Json
+                && File.ReadAllText(Path.Combine(uiService.ConfigDirectory, "重命名界面配置.json")) == prettyA
                 && ((ClaudeProvider)Field<ComboBox>(panel, "已保存的配置").SelectedItem).Name == name.Text,
                 "保存后配置文件改名且下拉框选中新名称");
-            Click(panel, "保存并启用");
+            Check(Children(panel).OfType<Button>().Any(button => Object.Equals(button.Content, "启用此配置")), "未修改的已保存配置展示直接启用");
+            editor.Text = a.Json + "\n";
+            Check(Children(panel).OfType<Button>().Any(button => Object.Equals(button.Content, "保存并启用")), "修改内容后按钮恢复为保存并启用");
+            editor.Text = prettyA;
+            string configBackupPath = Path.Combine(uiService.ConfigDirectory, "重命名界面配置.json") + ".bak";
+            File.WriteAllText(configBackupPath, "marker");
+            Click(panel, "启用此配置");
             Check(File.ReadAllText(uiService.SettingsPath) == editor.Text, "界面启用直接完整写入编辑器内容");
+            Check(File.ReadAllText(configBackupPath) == "marker", "未修改时直接启用不重复保存配置及备份");
             editor.Text = "{无效"; Click(panel, "保存并启用");
-            Check(File.ReadAllText(uiService.SettingsPath) == a.Json, "界面格式错误不会写入目标");
+            Check(File.ReadAllText(uiService.SettingsPath) == prettyA, "界面格式错误不会写入目标");
             Check(editor.Text == "{无效", "校验失败保留输入，便于继续修正");
+            Check(restoreButton.IsEnabled && restoreButton.ToolTip != null && restoreButton.ToolTip.ToString().Contains("还原"),
+                "切换后恢复入口说明用途并保留备份说明");
             Click(panel, "恢复原配置");
-            Check(File.ReadAllText(uiService.SettingsPath) == original, "界面恢复最初的原配置");
-            Click(panel, "从当前配置新建");
-            Check(editor.Text == original && name.Text == "" && !name.IsReadOnly, "可复制当前全文另存为新配置");
-            Click(panel, "新增配置");
-            Check(editor.Text == ClaudeProviders.Template, "新增配置提供标准 JSON 模板");
-            Check(!deleteButton.IsEnabled, "切换新增配置后禁用删除入口");
+            Check(restorePrompts == 1 && File.ReadAllText(uiService.SettingsPath) == original, "恢复原配置经确认后还原最初的原配置");
+            Check(!restoreButton.IsEnabled && restoreButton.ToolTip != null && restoreButton.ToolTip.ToString().Contains("无需恢复"),
+                "恢复完成后入口回到禁用并说明当前已是原配置");
+            Click(panel, "新建配置");
+            Check(editor.Text == "{无效" && name.Text == "" && !name.IsReadOnly && discardPrompts == 0 && !deleteButton.IsEnabled,
+                "有未保存修改时“新建配置”以当前展示内容为初始内容，不丢弃草稿");
             name.Text = "官方配置示例"; editor.Text = ClaudeProviders.Template; Click(panel, "保存并启用");
             Layout(panel, 1020, 690);
             var bitmap = new RenderTargetBitmap(1020, 690, 96, 96, PixelFormats.Pbgra32); bitmap.Render(panel);
             var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap));
             using (var stream = File.Create(Path.Combine(Environment.CurrentDirectory, "artifacts", "claude-providers.png"))) png.Save(stream);
             Layout(panel, 780, 550);
-            Check(editor.ActualHeight > 100 && Children(panel).OfType<Button>().First(button => Object.Equals(button.Content, "保存并启用")).ActualHeight > 0,
+            Check(editor.ActualHeight > 100 && Children(panel).OfType<Button>().First(button => Object.Equals(button.Content, "启用此配置")).ActualHeight > 0,
                 "较矮布局保留编辑空间和启用按钮");
             Check(Field<ComboBox>(panel, "已保存的配置").ActualWidth >= 160 && deleteButton.ActualWidth > 0,
                 "较窄布局仍完整显示配置选择和删除按钮");
@@ -266,14 +327,53 @@ public static class ClaudeProviderTests
                 && editor.Text == uiService.ReadCurrent(), "删除已启用配置不影响当前配置和备份，并重新参考当前全文");
             savedConfigs.SelectedIndex = 0;
             Click(panel, "删除配置");
-            Check(savedConfigs.Items.Count == 0 && !deleteButton.IsEnabled, "删除最后一项后空列表仍可新建配置");
+            Check(savedConfigs.Items.Count == 0 && savedConfigs.SelectedIndex == -1
+                && savedConfigs.Visibility == Visibility.Collapsed
+                && Children(panel).OfType<TextBlock>().Any(text => text.Text.Contains("暂无已保存的配置") && text.Visibility == Visibility.Visible)
+                && !deleteButton.IsEnabled, "删除最后一项后不显示下拉框，直接给出空态提示并保持可新建");
+
+            // —— 未保存编辑保护：手动切换选择/恢复前先确认，拒绝则保留编辑内容 ——
+            name.Text = "保留测试"; editor.Text = b.Json; Click(panel, "仅保存");
+            Click(panel, "新建配置");
+            name.Text = "第二配置"; editor.Text = a.Json; Click(panel, "仅保存");
+            var switchCombo = Field<ComboBox>(panel, "已保存的配置");
+            Check(switchCombo.Items.Count == 2, "准备两个配置用于切换保护测试");
+            editor.Text = "{草稿";
+            allowDiscard = false;
+            int keepIndex = switchCombo.Items.Cast<ProviderConfig>().ToList().FindIndex(p => p.Name == "保留测试");
+            switchCombo.SelectedIndex = keepIndex;
+            Check(((ProviderConfig)switchCombo.SelectedItem).Name == "第二配置" && editor.Text == "{草稿" && name.Text == "第二配置",
+                "选择其他配置被拒绝时保留未保存编辑并回滚选中");
+            allowDiscard = true;
+            switchCombo.SelectedIndex = keepIndex;
+            Check(editor.Text == prettyB && name.Text == "保留测试" && ((ProviderConfig)switchCombo.SelectedItem).Name == "保留测试",
+                "确认后载入所选配置内容");
+            Click(panel, "新建配置");
+            Check(editor.Text == prettyB && name.Text == "" && Field<ComboBox>(panel, "已保存的配置").SelectedIndex == -1,
+                "“新建配置”以显示中的所选配置内容为初始内容并进入新建状态");
+            editor.Text = "{草稿二";
+            int discardBefore = discardPrompts;
+            Click(panel, "新建配置");
+            Check(editor.Text == "{草稿二" && discardPrompts == discardBefore, "“新建配置”不弹丢弃确认、草稿原样成为初稿");
+            allowRestore = false;
+            int restoreBefore = restorePrompts;
+            Click(panel, "恢复原配置");
+            Check(restorePrompts == restoreBefore + 1 && File.ReadAllText(uiService.SettingsPath) == ClaudeProviders.Template,
+                "恢复原配置被拒绝时当前文件不变");
+            // —— 留档被外部删除：恢复入口禁用并说明暂无原配置，且保存动作不会重建留档 ——
+            File.Delete(uiService.OriginalPath);
+            name.Text = "留档删除"; editor.Text = a.Json; Click(panel, "仅保存");
+            Check(!File.Exists(uiService.OriginalPath) && !restoreButton.IsEnabled
+                && restoreButton.ToolTip != null && restoreButton.ToolTip.ToString().Contains("暂无可恢复"),
+                "留档被删除后恢复入口禁用并说明暂无原配置");
             string protectedPath = Path.Combine(uiService.ConfigDirectory, "原有配置.json");
             File.WriteAllText(protectedPath, original);
             int protectedConfirmations = 0;
-            var protectedPanel = new ClaudeProvidersPanel(uiService, selectedName => { protectedConfirmations++; return true; })
+            var protectedPanel = new ClaudeProvidersPanel(uiService, selectedName => { protectedConfirmations++; return true; }, () => true, () => true)
                 { Resources = desktop.Window.Resources };
             Layout(protectedPanel, 1020, 690);
-            Field<ComboBox>(protectedPanel, "已保存的配置").SelectedIndex = 0;
+            var protectedCombo = Field<ComboBox>(protectedPanel, "已保存的配置");
+            protectedCombo.SelectedIndex = protectedCombo.Items.Cast<ProviderConfig>().ToList().FindIndex(p => p.Name == "原有配置");
             var protectedDelete = Children(protectedPanel).OfType<Button>().First(button => Object.Equals(button.Content, "删除配置"));
             Check(!protectedDelete.IsEnabled && Children(protectedPanel).OfType<TextBlock>().Any(text => text.Text.Contains("禁止删除")),
                 "选择原有配置时禁用删除并说明保护原因");
@@ -284,8 +384,13 @@ public static class ClaudeProviderTests
             Check(!protectedDelete.IsEnabled, "原有配置在界面保存后仍保持删除保护");
             Field<TextBox>(protectedPanel, "配置名称（保存为同名 JSON 文件）").Text = "改名后的原有配置";
             Click(protectedPanel, "仅保存");
-            Check(!File.Exists(protectedPath) && File.ReadAllText(Path.Combine(uiService.ConfigDirectory, "改名后的原有配置.json")) == original
+            Check(!File.Exists(protectedPath) && File.ReadAllText(Path.Combine(uiService.ConfigDirectory, "改名后的原有配置.json")) == ClaudeProviders.Pretty(original)
                 && !protectedDelete.IsEnabled && !uiService.CanDelete("改名后的原有配置"), "原有配置支持改名但不会取得删除权限");
+            // 构造器内回调必须引用字段而非被同名参数遮蔽的注入参数：无注入构造（App 真实路径）时新建不抛空引用。
+            var plainPanel = new ClaudeProvidersPanel(uiService) { Resources = desktop.Window.Resources };
+            Click(plainPanel, "新建配置");
+            Check(Field<TextBox>(plainPanel, "Claude 官方配置 JSON").Text == ClaudeProviders.Template,
+                "无注入构造时“新建配置”可用且以当前内容为底稿，不抛空引用");
             int codex = CodexProviderTests.Run(app, desktop);
             if (codex != 0) return codex;
             Console.WriteLine("Claude 配置检查：" + passed + " 项通过。");

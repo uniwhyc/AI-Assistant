@@ -4,6 +4,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
 namespace AI_Assistant
@@ -91,6 +93,23 @@ namespace AI_Assistant
             {
                 lineNumber++;
                 if (String.IsNullOrWhiteSpace(line)) continue;
+                // 预检：先做廉价的子串判断，跳过肯定无产出的行，避免对整行做完整 JSON 解析。
+                // 这些子串是所有有效行的必要条件（值文本以引号包裹原样出现，与键值间空格无关），
+                // 不含即整行无用；宁可多解析几行（假阳性不影响结果），也不能漏（假阴性会丢数据）。
+                bool relevant;
+                if (platform == "Codex")
+                    relevant = line.IndexOf("session_meta", StringComparison.Ordinal) >= 0
+                        || line.IndexOf("turn_context", StringComparison.Ordinal) >= 0
+                        || line.IndexOf("token_count", StringComparison.Ordinal) >= 0
+                        || (line.IndexOf("response_item", StringComparison.Ordinal) >= 0
+                            && (line.IndexOf("\"user\"", StringComparison.Ordinal) >= 0
+                                || line.IndexOf("\"function_call\"", StringComparison.Ordinal) >= 0
+                                || line.IndexOf("\"custom_tool_call\"", StringComparison.Ordinal) >= 0));
+                else
+                    relevant = line.IndexOf("\"user\"", StringComparison.Ordinal) >= 0
+                        || line.IndexOf("\"assistant\"", StringComparison.Ordinal) >= 0
+                        || line.IndexOf("\"usage\"", StringComparison.Ordinal) >= 0;
+                if (!relevant) continue;
                 Dictionary<string, object> obj;
                 try { obj = Map(json.DeserializeObject(line)); }
                 catch (ArgumentException) { report.InvalidLines++; continue; }
@@ -248,19 +267,28 @@ namespace AI_Assistant
             return unique.Values.OrderBy(x => x.Time).ToList();
         }
 
+        // 待解析的日志文件：平台标签随目录确定。
+        sealed class ScanTarget
+        {
+            public string Path, Platform;
+        }
+
         public static ScanResult Scan(SourcePaths paths, Action<int> progress)
         {
             var result = new ScanResult();
-            ScanDirectory(Path.Combine(paths.Codex, "sessions"), "Codex", result, progress, true);
-            ScanDirectory(Path.Combine(paths.Codex, "archived_sessions"), "Codex", result, progress, false);
-            ScanDirectory(Path.Combine(paths.Claude, "projects"), "Claude Code", result, progress, true);
+            var targets = new List<ScanTarget>();
+            CollectDirectory(Path.Combine(paths.Codex, "sessions"), "Codex", result, targets, true);
+            CollectDirectory(Path.Combine(paths.Codex, "archived_sessions"), "Codex", result, targets, false);
+            CollectDirectory(Path.Combine(paths.Claude, "projects"), "Claude Code", result, targets, true);
+            ParseFiles(targets, result, progress);
             result.Records = Deduplicate(result.Records);
             if (result.InvalidLines > 0)
                 result.Warn(String.Format("跳过 {0:N0} 条无法解析的记录（可能正在写入），刷新后会重新读取。", result.InvalidLines));
             return result;
         }
 
-        static void ScanDirectory(string root, string platform, ScanResult result, Action<int> progress, bool required)
+        // 只收集待解析文件；目录遍历本身很快，瓶颈在逐行 JSON 解析，交给 ParseFiles 并行处理。
+        static void CollectDirectory(string root, string platform, ScanResult result, List<ScanTarget> targets, bool required)
         {
             if (!Directory.Exists(root))
             {
@@ -287,18 +315,43 @@ namespace AI_Assistant
                     catch (UnauthorizedAccessException) { result.Warn(platform + " 部分目录无读取权限。"); }
                 }
                 foreach (string file in files)
+                    targets.Add(new ScanTarget { Path = file, Platform = platform });
+            }
+        }
+
+        // 文件之间互不依赖，按文件并行解析；结果仍按收集顺序合并，保持与顺序扫描一致的确定性。
+        static void ParseFiles(List<ScanTarget> targets, ScanResult result, Action<int> progress)
+        {
+            var parts = new List<Usage>[targets.Count];
+            var warnings = new List<string>[targets.Count];
+            var invalid = new int[targets.Count];
+            int done = 0;
+            Parallel.For(0, targets.Count, i =>
+            {
+                var local = new ScanResult();
+                try
                 {
-                    try
-                    {
-                        using (var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
-                        using (var reader = new StreamReader(stream, Encoding.UTF8, true))
-                            result.Records.AddRange(Parse(reader, platform, file, result));
-                        result.Files++;
-                        if (progress != null && result.Files % 20 == 0) progress(result.Files);
-                    }
-                    catch (UnauthorizedAccessException) { result.Warn(platform + " 部分日志无读取权限。"); }
-                    catch (IOException) { result.Warn(platform + " 部分日志暂时无法读取，请刷新重试。"); }
+                    using (var stream = new FileStream(targets[i].Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    using (var reader = new StreamReader(stream, Encoding.UTF8, true, 65536))
+                        parts[i] = Parse(reader, targets[i].Platform, targets[i].Path, local);
                 }
+                catch (UnauthorizedAccessException) { local.Warn(targets[i].Platform + " 部分日志无读取权限。"); }
+                catch (IOException) { local.Warn(targets[i].Platform + " 部分日志暂时无法读取，请刷新重试。"); }
+                warnings[i] = local.Warnings;
+                invalid[i] = local.InvalidLines;
+                if (parts[i] != null)
+                {
+                    int current = Interlocked.Increment(ref done);
+                    if (progress != null && current % 20 == 0) progress(current);
+                }
+            });
+            for (int i = 0; i < targets.Count; i++)
+            {
+                result.InvalidLines += invalid[i];
+                foreach (string warning in warnings[i]) result.Warn(warning);
+                if (parts[i] == null) continue;
+                result.Files++;
+                result.Records.AddRange(parts[i]);
             }
         }
     }
@@ -365,12 +418,14 @@ namespace AI_Assistant
     {
         public static List<Usage> Filter(IEnumerable<Usage> source, string platform, DateTime? start, DateTime end, string query)
         {
-            query = (query ?? "").Trim();
+            // 路径分隔符统一为正斜杠：Codex 日志里的项目路径是反斜杠，Claude 是正斜杠，
+            // 项目页双击跳转会把组内某条记录的原始路径带进搜索框，不归一化则漏掉另一平台的会话。
+            query = (query ?? "").Trim().Replace('\\', '/');
             return source.Where(x => (platform == "全部平台" || x.Platform == platform)
                 && (!start.HasValue || x.Time.LocalDateTime >= start.Value)
                 // 包含结束时间的整个秒，保留日志中带毫秒的边界记录。
                 && x.Time.LocalDateTime.Ticks / TimeSpan.TicksPerSecond <= end.Ticks / TimeSpan.TicksPerSecond
-                && (query.Length == 0 || (x.Project + " " + x.Model + " " + x.Session)
+                && (query.Length == 0 || (x.Project + " " + x.Model + " " + x.Session).Replace('\\', '/')
                     .IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
         }
         public static List<SessionRow> Sessions(IEnumerable<Usage> source)

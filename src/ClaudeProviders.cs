@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 
@@ -29,8 +30,68 @@ namespace AI_Assistant
                 NameFieldAutomationName = "配置名称（保存为同名 JSON 文件）",
                 FormatHint = "按 Claude 官方 settings.json 格式填写完整内容。启用时完整重写，原配置另存备份。",
                 ValidatePassedMessage = "JSON 语法与常用字段类型检查通过；具体配置项以 Claude 官方文档为准。",
-                Validator = text => { Validate(text); return new List<string>(); }
+                Validator = text => { Validate(text); return new List<string>(); },
+                Formatter = Pretty
             };
+        }
+
+        // 界面保存时把 JSON 重排为两空格缩进的易读格式：只调整空白，键序、字符串转义与数字原文一律保留；
+        // 内容无法完整识别（结构不完整或异常）时原样返回，交由校验器按原文报错。重排结果再次重排保持不变。
+        public static string Pretty(string json)
+        {
+            if (String.IsNullOrWhiteSpace(json)) return json;
+            var output = new StringBuilder();
+            int depth = 0;
+            for (int i = 0; i < json.Length; )
+            {
+                char c = json[i];
+                if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { i++; continue; }
+                if (c == '"')
+                {
+                    output.Append('"'); i++;
+                    while (i < json.Length)
+                    {
+                        char s = json[i++]; output.Append(s);
+                        if (s == '\\' && i < json.Length) { output.Append(json[i]); i++; }
+                        else if (s == '"') break;
+                    }
+                    continue;
+                }
+                if (c == '{' || c == '[')
+                {
+                    char close = c == '{' ? '}' : ']';
+                    int j = i + 1;
+                    while (j < json.Length && " \t\r\n".IndexOf(json[j]) >= 0) j++;
+                    if (j < json.Length && json[j] == close) { output.Append(c).Append(close); i = j + 1; continue; }
+                    depth++;
+                    output.Append(c).Append('\n');
+                    Indent(output, depth);
+                    i++;
+                    continue;
+                }
+                if (c == '}' || c == ']')
+                {
+                    if (--depth < 0) return json;
+                    output.Append('\n');
+                    Indent(output, depth);
+                    output.Append(c);
+                    i++;
+                    continue;
+                }
+                if (c == ',') { output.Append(",\n"); Indent(output, depth); i++; continue; }
+                if (c == ':') { output.Append(": "); i++; continue; }
+                int start = i;
+                while (i < json.Length && " \t\r\n,{}[]:".IndexOf(json[i]) < 0) i++;
+                if (i == start) return json;
+                output.Append(json, start, i - start);
+            }
+            if (depth != 0) return json;
+            return output.ToString() + "\n";
+        }
+
+        static void Indent(StringBuilder output, int depth)
+        {
+            for (int i = 0; i < depth; i++) output.Append("  ");
         }
 
         public static void Validate(string text)

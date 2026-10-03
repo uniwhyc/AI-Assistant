@@ -169,6 +169,18 @@ public static class UsageTests
             Equal(1, Analytics.Filter(rows, "全部平台", null, DateTime.MaxValue, "CLAUDE-SESSION").Count);
             Equal(0, Analytics.Filter(rows, "Codex", null, DateTime.MaxValue, "").Count);
         });
+        Test("搜索命中不受路径分隔符方向影响", () => {
+            // 真实缺陷复现：项目页双击跳转把组内最后一条记录的原始路径带进搜索框，
+            // Claude 记录是正斜杠、Codex 是反斜杠，两个方向必须都能命中。
+            var rows = new[] {
+                new Usage { Key = "sep-codex", Platform = "Codex", Project = @"E:\demo\project-alpha", Input = 1 },
+                new Usage { Key = "sep-claude", Platform = "Claude Code", Project = "E:/demo/project-alpha", Input = 1 },
+                new Usage { Key = "sep-beta", Platform = "Codex", Project = @"E:\demo\project-beta", Input = 1 }
+            };
+            Equal(2, Analytics.Filter(rows, "全部平台", null, DateTime.MaxValue, "E:/demo/project-alpha").Count);
+            Equal(2, Analytics.Filter(rows, "全部平台", null, DateTime.MaxValue, @"E:\demo\project-alpha").Count);
+            Equal(1, Analytics.Filter(rows, "全部平台", null, DateTime.MaxValue, "E:/demo/project-beta").Count);
+        });
         Test("会话聚合保留全部模型与精确 Token", () => {
             var rows = Parse("Claude Code", Claude("m1", 10, 20, 30, 40, "2026-09-13T01:00:00Z"), Claude("m2", 1, 2, 3, 4, "2026-09-13T01:01:00Z"));
             var session = Analytics.Sessions(rows).Single();
@@ -228,6 +240,43 @@ public static class UsageTests
             string missing = Path.Combine(Path.GetTempPath(), "AI_Assistant-不存在-" + Guid.NewGuid().ToString("N"));
             var scan = UsageReader.Scan(new SourcePaths { Codex = missing, Claude = missing }, null);
             Equal(0, scan.Records.Count); Equal(2, scan.Warnings.Count);
+        });
+        Test("带空格的 JSON 日志同样完整统计", () => {
+            string folder = Path.Combine(Path.GetTempPath(), "AI_Assistant-空格-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string projects = Path.Combine(folder, "claude", "projects", "p");
+                Directory.CreateDirectory(projects);
+                File.WriteAllText(Path.Combine(projects, "s.jsonl"),
+                    "{ \"type\": \"assistant\", \"timestamp\": \"2026-09-13T01:00:00Z\", \"sessionId\": \"s\", \"cwd\": \"E:/测试项目\", \"requestId\": \"r\", \"message\": { \"id\": \"m\", \"model\": \"测试模型\", \"usage\": { \"input_tokens\": 10, \"cache_read_input_tokens\": 5, \"cache_creation_input_tokens\": 0, \"output_tokens\": 2 } } }\n");
+                var claude = UsageReader.Scan(new SourcePaths { Codex = Path.Combine(folder, "空"), Claude = Path.Combine(folder, "claude") }, null);
+                Equal(1, claude.Records.Count); Equal(15L, claude.Records[0].AllInput);
+                string sessions = Path.Combine(folder, "codex", "sessions");
+                Directory.CreateDirectory(sessions);
+                File.WriteAllText(Path.Combine(sessions, "rollout.jsonl"),
+                    "{ \"timestamp\": \"2026-09-13T01:00:00Z\", \"type\": \"event_msg\", \"payload\": { \"type\": \"token_count\", \"info\": { \"total_token_usage\": { \"input_tokens\": 100, \"cached_input_tokens\": 40, \"cache_write_input_tokens\": 0, \"output_tokens\": 20 } } } }\n");
+                var codex = UsageReader.Scan(new SourcePaths { Codex = Path.Combine(folder, "codex"), Claude = Path.Combine(folder, "空") }, null);
+                Equal(1, codex.Records.Count); Equal(100L, codex.Records[0].AllInput);
+            }
+            finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+        });
+        Test("多文件并行扫描计数与进度回调正确", () => {
+            string folder = Path.Combine(Path.GetTempPath(), "AI_Assistant-并行-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                string projects = Path.Combine(folder, "claude", "projects", "p");
+                Directory.CreateDirectory(projects);
+                for (int i = 0; i < 45; i++)
+                    File.WriteAllText(Path.Combine(projects, "s" + i.ToString("D2") + ".jsonl"),
+                        Line(new { type = "assistant", timestamp = "2026-09-13T01:00:00Z", sessionId = "s" + i, cwd = "E:/测试项目",
+                            requestId = "req-" + i, message = new { id = "m" + i, model = "测试模型", usage = new { input_tokens = 10, output_tokens = 1 } } }) + "\n");
+                var progress = new List<int>();
+                var scan = UsageReader.Scan(new SourcePaths { Codex = Path.Combine(folder, "空"), Claude = Path.Combine(folder, "claude") },
+                    count => { lock (progress) progress.Add(count); });
+                Equal(45, scan.Files); Equal(45, scan.Records.Count);
+                Equal(2, progress.Count); Equal(true, progress.Contains(20) && progress.Contains(40));
+            }
+            finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
         });
         Test("项目聚合合并同目录多会话并精确求和", () => {
             var rows = new[] {

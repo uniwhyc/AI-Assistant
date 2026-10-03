@@ -92,6 +92,35 @@ public static class CodexProviderTests
             damaged.Apply(b);
             Check(File.ReadAllText(damaged.OriginalPath) == "model = \"未闭合", "Codex 损坏的原文也完整备份");
 
+            // 留档时机（与 Claude 相同）：打开配置界面即保存当时的生效文件；已有留档永不被覆盖。
+            var snapshot = Service("留档");
+            File.WriteAllText(snapshot.SettingsPath, original);
+            snapshot.PreserveOriginal();
+            Check(File.ReadAllBytes(snapshot.OriginalPath).SequenceEqual(originalBytes), "Codex 打开配置界面留档当时的原配置");
+            Check(!snapshot.CanRestore(), "Codex 生效文件与留档一致时无需恢复");
+            File.WriteAllText(snapshot.SettingsPath, b.Json);
+            Check(snapshot.CanRestore(), "Codex 生效文件偏离留档时恢复可用");
+            snapshot.PreserveOriginal();
+            Check(File.ReadAllBytes(snapshot.OriginalPath).SequenceEqual(originalBytes), "Codex 已有留档永不被覆盖");
+            var emptySnapshot = Service("留档空");
+            emptySnapshot.PreserveOriginal();
+            Check(!File.Exists(emptySnapshot.OriginalPath) && !emptySnapshot.CanRestore(), "Codex 没有原配置时不伪造留档也不提供恢复");
+            // 生效文件被外部删除同样视为偏离留档：恢复仍可用并能整体还原。
+            var missing = Service("原文缺失");
+            File.WriteAllText(missing.SettingsPath, original);
+            missing.PreserveOriginal();
+            File.Delete(missing.SettingsPath);
+            Check(missing.CanRestore(), "Codex 生效文件被外部删除时恢复仍可用");
+            missing.Restore();
+            Check(File.ReadAllBytes(missing.SettingsPath).SequenceEqual(originalBytes), "Codex 缺失的生效文件可整体还原为留档原配置");
+            // 读取原始配置：有留档取留档，尚无留档时回退当前生效文件。
+            var originalReader = Service("原配置读取");
+            Check(originalReader.ReadOriginal() == CodexProviders.Template, "Codex 没有留档也没有生效文件时读取原配置回退模板");
+            File.WriteAllText(originalReader.SettingsPath, original);
+            originalReader.PreserveOriginal();
+            File.WriteAllText(originalReader.SettingsPath, b.Json);
+            Check(originalReader.ReadOriginal() == original, "Codex 已切换配置后读取原配置仍返回首次留档内容");
+
             var deletion = Service("删除配置");
             File.WriteAllText(deletion.SettingsPath, original);
             deletion.Save(a); deletion.Save(a, true); deletion.Save(b); deletion.Apply(a);
@@ -149,7 +178,7 @@ public static class CodexProviderTests
             var uiClaude = ClaudeService("界面Claude");
             var uiCodex = Service("界面Codex");
             File.WriteAllText(uiCodex.SettingsPath, original);
-            var panel = new ClaudeProvidersPanel(uiClaude, uiCodex) { Resources = desktop.Window.Resources };
+            var panel = new ClaudeProvidersPanel(uiClaude, uiCodex, null, () => true, () => true) { Resources = desktop.Window.Resources };
             Layout(panel, 1020, 690);
             Check(Field<TextBox>(panel, "Claude 官方配置 JSON").Text == uiClaude.ReadCurrent(), "配置修改窗口默认打开 Claude 配置");
             Check(Children(panel).OfType<Button>().Count(button => Object.Equals(button.Content, "Codex")) == 1
@@ -159,20 +188,34 @@ public static class CodexProviderTests
             Check(Field<TextBox>(panel, "Codex 官方配置 TOML").Text == original, "切换 Codex 后编辑当前 config.toml 全文");
             Check(Children(panel).OfType<TextBlock>().Any(text => text.Text.Contains("目标文件：") && text.Text.EndsWith("config.toml")),
                 "切换后目标文件指向 config.toml");
+            Check(File.Exists(uiCodex.OriginalPath) && File.ReadAllBytes(uiCodex.OriginalPath).SequenceEqual(File.ReadAllBytes(uiCodex.SettingsPath)),
+                "Codex 打开配置界面即把当前原配置留档为原始备份");
             var codexName = Field<TextBox>(panel, "配置名称（保存为同名 TOML 文件）");
             codexName.Text = "界面测试配置";
             var codexEditor = Field<TextBox>(panel, "Codex 官方配置 TOML");
             codexEditor.Text = a.Json; Click(panel, "仅保存");
             Check(File.ReadAllText(uiCodex.SettingsPath) == original, "Codex 界面仅保存不改动当前文件");
             Check(File.ReadAllText(Path.Combine(uiCodex.ConfigDirectory, "界面测试配置.toml")) == a.Json, "Codex 界面保存为独立 TOML 文件");
-            Click(panel, "保存并启用");
+            Click(panel, "启用此配置");
             Check(File.ReadAllText(uiCodex.SettingsPath) == a.Json, "Codex 界面启用完整写入 config.toml");
+            var codexRestore = Children(panel).OfType<Button>().First(button => Object.Equals(button.Content, "恢复原配置"));
+            Check(codexRestore.IsEnabled && codexRestore.ToolTip != null && codexRestore.ToolTip.ToString().Contains("Codex"),
+                "Codex 切换后恢复入口说明用途与平台");
+            // —— 留档被外部删除：恢复入口禁用并说明暂无原配置，且保存动作不会重建留档 ——
+            File.Delete(uiCodex.OriginalPath);
+            codexName.Text = "留档删除"; codexEditor.Text = a.Json; Click(panel, "仅保存");
+            Check(!File.Exists(uiCodex.OriginalPath) && !codexRestore.IsEnabled
+                && codexRestore.ToolTip != null && codexRestore.ToolTip.ToString().Contains("暂无可恢复"),
+                "Codex 留档被删除后恢复入口禁用并说明暂无原配置");
             codexEditor.Text = "x = 1\nmodel = 123\n"; Click(panel, "检查格式");
             Check(Children(panel).OfType<TextBlock>().Any(text => text.Text.Contains("第 2 行")), "Codex 检查格式显示行号错误");
             codexEditor.Text = "未保存的修改";
             Click(panel, "Claude Code");
+            var claudeConfigs = Field<ComboBox>(panel, "已保存的配置");
             Check(Field<TextBox>(panel, "Claude 官方配置 JSON").Text == uiClaude.ReadCurrent()
-                && Field<ComboBox>(panel, "已保存的配置").Items.Count == 0, "切回 Claude 恢复其配置列表与全文");
+                && claudeConfigs.Items.Count == 0 && claudeConfigs.Visibility == Visibility.Collapsed
+                && Children(panel).OfType<TextBlock>().Any(text => text.Text.Contains("暂无已保存的配置") && text.Visibility == Visibility.Visible),
+                "切回 Claude 恢复其配置列表（空列表直接提示、不显示下拉框）与全文");
             Click(panel, "Codex");
             Check(Field<TextBox>(panel, "Codex 官方配置 TOML").Text == uiCodex.ReadCurrent(), "切换平台丢弃未保存编辑并重新参考当前全文");
             var bitmap = new RenderTargetBitmap(1020, 690, 96, 96, PixelFormats.Pbgra32); bitmap.Render(panel);

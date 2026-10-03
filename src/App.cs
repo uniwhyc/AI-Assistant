@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
@@ -35,7 +36,7 @@ namespace AI_Assistant
         // 由项目统计双击跳转产生的搜索条件（完整路径），仅在回到项目统计页时清除，不影响用户手动搜索。
         string jumpSearch;
         string selectedPlatform = "全部平台";
-        bool ready, busy, syncingRange, syncingLists;
+        bool ready, busy, syncingRange, syncingLists, firstLoadDone;
         DateTime? rangeStart;
         DateTime rangeEnd = DateTime.Today.AddDays(1).AddTicks(-1);
         readonly DispatcherTimer searchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -73,6 +74,7 @@ namespace AI_Assistant
             Find<Button>("DetailButton").Click += (s, e) => Details();
             Find<DataGrid>("SessionsGrid").MouseDoubleClick += (s, e) => Details();
             Find<DataGrid>("SessionsGrid").KeyDown += (s, e) => { if (e.Key == Key.Enter) { Details(); e.Handled = true; } };
+            Find<DataGrid>("SessionsGrid").SelectionChanged += (s, e) => UpdateDetailButton();
             Find<DataGrid>("ProjectsGrid").MouseDoubleClick += (s, e) => OpenProject();
             Find<DataGrid>("SessionsGrid").PreviewMouseWheel += ForwardWheel;
             Find<DataGrid>("ProjectsGrid").PreviewMouseWheel += ForwardWheel;
@@ -116,13 +118,22 @@ namespace AI_Assistant
             busy = true;
             Find<Button>("RefreshButton").IsEnabled = false;
             Find<Button>("SourcesButton").IsEnabled = false;
-            Text("StatusText", "正在读取本地日志，界面仍可操作…");
+            // 首屏读取期间给数据区盖半透明遮罩：读取完成前任何操作都落在空数据上，
+            // 容易把“还没读出来”误当成“没有数据”。首次成功读取后，手动刷新保留旧数据，仍可操作。
+            bool first = !firstLoadDone;
+            if (first) Text("LoadingDetail", "读取完成后自动展示统计结果");
+            Find<Border>("LoadingOverlay").Visibility = first ? Visibility.Visible : Visibility.Collapsed;
+            Text("StatusText", first ? "正在读取本地日志，完成后自动展示统计结果…" : "正在读取本地日志，界面仍可操作…");
             var selectedPaths = new SourcePaths { Codex = paths.Codex, Claude = paths.Claude };
             try
             {
                 var scan = await Task.Run(() => UsageReader.Scan(selectedPaths, count => Window.Dispatcher.BeginInvoke(new Action(() =>
-                    Text("StatusText", String.Format("正在读取本地日志 · 已处理 {0:N0} 个文件…", count))))));
+                {
+                    Text("StatusText", String.Format("正在读取本地日志 · 已处理 {0:N0} 个文件…", count));
+                    if (first) Text("LoadingDetail", String.Format("已处理 {0:N0} 个文件…", count));
+                }))));
                 SetResult(scan);
+                firstLoadDone = true;
             }
             catch (Exception ex)
             {
@@ -134,6 +145,7 @@ namespace AI_Assistant
                 busy = false;
                 Find<Button>("RefreshButton").IsEnabled = true;
                 Find<Button>("SourcesButton").IsEnabled = true;
+                Find<Border>("LoadingOverlay").Visibility = Visibility.Collapsed;
             }
         }
 
@@ -295,14 +307,33 @@ namespace AI_Assistant
             sessions = Analytics.Sessions(filtered);
             Find<DataGrid>("SessionsGrid").ItemsSource = sessions;
             Text("TableCount", String.Format("{0} · 共 {1:N0} 个会话 · 点击列标题排序", selectedPlatform, sessions.Count));
+            // 空表提示随搜索状态分流：搜错词时引导改关键词，而不是查时间范围与数据源。
+            string emptyMessage = EmptyMessage(Find<TextBox>("SearchBox").Text);
+            Text("EmptyText", emptyMessage);
             Find<TextBlock>("EmptyText").Visibility = sessions.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             Find<Button>("ExportButton").IsEnabled = sessions.Count > 0;
-            Find<Button>("DetailButton").IsEnabled = sessions.Count > 0;
+            UpdateDetailButton();
             projects = Analytics.Projects(filtered);
             Find<DataGrid>("ProjectsGrid").ItemsSource = projects;
             Text("ProjectCount", String.Format("{0} · 共 {1:N0} 个项目 · 点击列标题排序", selectedPlatform, projects.Count));
+            Text("ProjectsEmpty", emptyMessage);
             Find<TextBlock>("ProjectsEmpty").Visibility = projects.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             DrawChart();
+        }
+
+        // “查看所选会话”只在有会话且选中了某一行时可用；未选中时置灰，避免可点但无反应的困惑。
+        void UpdateDetailButton()
+        {
+            Find<Button>("DetailButton").IsEnabled = sessions.Count > 0 && Find<DataGrid>("SessionsGrid").SelectedItem != null;
+        }
+
+        // 空表提示文案：搜索非空时给出与搜索相关的引导（回显关键词，超长截断）。
+        static string EmptyMessage(string query)
+        {
+            query = (query ?? "").Trim();
+            if (query.Length == 0) return "此范围没有用量记录。试试“全部时间”，或检查数据源目录。";
+            if (query.Length > 24) query = query.Substring(0, 24) + "…";
+            return String.Format("没有匹配“{0}”的记录，试试更换关键词或清空搜索。", query);
         }
 
         void PlatformSummary(string platform, string prefix)
@@ -334,11 +365,11 @@ namespace AI_Assistant
         {
             var row = Find<DataGrid>("SessionsGrid").SelectedItem as SessionRow;
             if (row == null) return;
-            // 顶部单行显示恢复对话命令，直接复制到终端即可继续该会话。
+            // 顶部标注恢复命令用途，命令单独一行，复制到终端即可继续该会话。
             string resume = row.Platform == "Codex"
                 ? "codex resume " + row.Session
                 : "claude --resume " + row.Session;
-            ShowText("会话详情", String.Format("{0}\n\n项目：{1}\n模型：{2}\n最近活动：{3:yyyy-MM-dd HH:mm:ss}\n用户请求：{4:N0} 次（你发出的消息）\n工具调用：{5:N0} 次（模型发起的调用）\n\n总 Token：{6:N0}\n普通输入：{7:N0}\n缓存读取：{8:N0}\n缓存写入：{9:N0}\n输出：{10:N0}\n缓存命中率：{11}\n\n以上数值仅包含当前筛选范围内的记录。",
+            ShowText("会话详情", String.Format("恢复命令（复制到终端可继续该会话）：\n{0}\n\n项目：{1}\n模型：{2}\n最近活动：{3:yyyy-MM-dd HH:mm:ss}\n用户请求：{4:N0} 次（你发出的消息）\n工具调用：{5:N0} 次（模型发起的调用）\n\n总 Token：{6:N0}\n普通输入：{7:N0}\n缓存读取：{8:N0}\n缓存写入：{9:N0}\n输出：{10:N0}\n缓存命中率：{11}\n\n以上数值仅包含当前筛选范围内的记录。",
                 resume, row.ProjectPath, row.Model, row.Last, row.UserRequests, row.ToolCalls, row.Total, row.Input, row.CacheRead, row.CacheWrite, row.Output, row.HitRate));
         }
 
@@ -396,7 +427,8 @@ namespace AI_Assistant
         [DllImport("dwmapi.dll")]
         static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
-        static void DarkTitleBar(Window window)
+        // 供配置面板的深色确认框复用，保证弹框标题栏与主体一致。
+        internal static void DarkTitleBar(Window window)
         {
             window.SourceInitialized += (s, e) => {
                 int enabled = 1;
@@ -438,7 +470,7 @@ namespace AI_Assistant
                     if (!Path.IsPathRooted(updated.Codex) || !Path.IsPathRooted(updated.Claude)) { error.Text = "请使用绝对路径，例如 C:\\Users\\用户名\\.codex。"; return; }
                     Directory.CreateDirectory(Path.GetDirectoryName(settingsFile));
                     File.WriteAllText(settingsFile, new JavaScriptSerializer().Serialize(updated), Encoding.UTF8);
-                    paths = updated; dialog.Close(); await Refresh();
+                    paths = updated; PreserveOriginals(); dialog.Close(); await Refresh();
                 }
                 catch (IOException) { error.Text = "设置保存失败，请检查配置目录的写入权限。"; }
                 catch (UnauthorizedAccessException) { error.Text = "无权保存设置，请检查配置目录的写入权限。"; }
@@ -479,11 +511,84 @@ namespace AI_Assistant
 
     public static class Program
     {
+        // 单实例锁：进程存活期间一直持有；键相同的第二个实例在启动处直接退出。
+        static Mutex instanceLock;
+
+        // 竞态检测：同一份数据目录（Claude/Codex 数据根 + 设置目录）只允许一个实例读写，
+        // 防止两个实例并发写配置、互相覆盖设置或重复扫描；键相同的再次启动（含后台方式）一律拒绝。
+        // 键由目录计算：隔离沙箱与真实目录键不同，互不阻塞。
+        public static bool AcquireInstanceLock()
+        {
+            var defaults = SourcePaths.Defaults();
+            string local = Environment.GetEnvironmentVariable("LOCALAPPDATA")
+                ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            byte[] hash;
+            using (var sha1 = System.Security.Cryptography.SHA1.Create())
+                hash = sha1.ComputeHash(Encoding.UTF8.GetBytes(defaults.Codex + "|" + defaults.Claude + "|" + local));
+            bool createdNew;
+            instanceLock = new Mutex(true, "Local\\AI_Assistant_" + BitConverter.ToString(hash).Replace("-", ""), out createdNew);
+            return createdNew;
+        }
+
+        // 已在运行提示：与主界面配色一致的深色提示窗（原生 MessageBox 是浅色系统风格，与深色界面割裂）。
+        // 提示发生在启动早期，主窗口尚未创建，字体、配色与按钮外观按主界面同一套值在此内联。
+        static void ShowRunningNotice()
+        {
+            var dialog = new Window
+            {
+                Title = "AI Assistant",
+                SizeToContent = SizeToContent.WidthAndHeight,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Background = Brush("#191D22"), Foreground = Brush("#F0F2F4"),
+                FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI"), FontSize = 13
+            };
+            Desktop.DarkTitleBar(dialog);
+
+            var body = new StackPanel { Margin = new Thickness(24, 22, 24, 0) };
+            body.Children.Add(new TextBlock { Text = "程序已在运行中。\n\n同一时刻只允许一个实例读写同一份数据目录，请从任务栏切换到已打开的窗口。",
+                TextWrapping = TextWrapping.Wrap, MaxWidth = 400 });
+
+            var ok = new Button { Content = "确定", MinWidth = 78, MinHeight = 40, Padding = new Thickness(16, 10, 16, 10),
+                Background = Brush("#242B33"), Foreground = Brush("#E4E8ED"), BorderBrush = Brush("#414A56"),
+                BorderThickness = new Thickness(1), Cursor = Cursors.Hand, IsDefault = true, IsCancel = true };
+            ok.Template = (ControlTemplate)XamlReader.Parse(
+                "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' " +
+                "xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'>" +
+                "<Border x:Name='Surface' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' " +
+                "BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='7' Padding='{TemplateBinding Padding}'>" +
+                "<ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center'/></Border>" +
+                "<ControlTemplate.Triggers>" +
+                "<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Surface' Property='Opacity' Value='0.8'/></Trigger>" +
+                "<Trigger Property='IsPressed' Value='True'><Setter TargetName='Surface' Property='Opacity' Value='0.6'/></Trigger>" +
+                "</ControlTemplate.Triggers></ControlTemplate>");
+            ok.Click += (s, e) => dialog.Close();
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(24, 18, 24, 20) };
+            buttons.Children.Add(ok);
+
+            var root = new StackPanel();
+            root.Children.Add(body); root.Children.Add(buttons);
+            dialog.Content = root;
+            dialog.Loaded += (s, e) => ok.Focus();
+            dialog.ShowDialog();
+        }
+
+        static Brush Brush(string color) { return (Brush)new BrushConverter().ConvertFromString(color); }
+
         [STAThread]
         public static int Main(string[] args)
         {
             try
             {
+                // 已有实例读写同一份数据时拒绝启动（双击、命令行、后台方式一致）：
+                // 先弹出提示告知用户程序已在运行，确认后以退出码 2 结束。
+                if (!AcquireInstanceLock())
+                {
+                    ShowRunningNotice();
+                    return 2;
+                }
                 var app = new Application();
                 var desktop = new Desktop();
                 if (args.Length >= 2 && args[0] == "--render")
@@ -497,6 +602,8 @@ namespace AI_Assistant
                     using (var file = File.Create(args[1])) encoder.Save(file);
                     return 0;
                 }
+                // 以第一次打开软件时为准：启动即留档两个平台的原配置（失败不阻断启动，打开配置界面与写入前还有兜底）。
+                desktop.PreserveOriginals();
                 desktop.Window.Loaded += async (s, e) => await desktop.Refresh();
                 return app.Run(desktop.Window);
             }

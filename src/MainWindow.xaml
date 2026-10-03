@@ -382,7 +382,7 @@
                     <Border Background="#1C2523" BorderBrush="#31483F" BorderThickness="1" CornerRadius="8" Padding="13" Margin="0,12,0,0">
                         <StackPanel><TextBlock Text="●  用量仅在本机统计" Foreground="#71E3BF" FontSize="12"/><TextBlock Text="配置文件仅在本机读写" Style="{StaticResource Caption}" FontSize="10" Margin="0,7,0,0"/></StackPanel>
                     </Border>
-                    <TextBlock Text="版本 1.2.2  /  Windows" Style="{StaticResource Caption}" FontSize="11" Margin="12,16,0,0"/>
+                    <TextBlock Text="版本 1.2.3  /  Windows" Style="{StaticResource Caption}" FontSize="11" Margin="12,16,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -519,7 +519,7 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
                                 <TextBlock x:Name="ProjectsEmpty" Text="此范围没有用量记录。试试“全部时间”，或检查数据源目录。" Foreground="{StaticResource Muted}" Margin="20,14" Visibility="Collapsed"/>
-                                <Grid Margin="20,12"><TextBlock Text="双击项目查看其会话" Style="{StaticResource Caption}"/></Grid>
+                                <Grid Margin="20,12"><TextBlock Text="双击项目行跳到会话明细，查看该项目的全部会话" Style="{StaticResource Caption}"/></Grid>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -541,7 +541,7 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                             <TextBlock x:Name="EmptyText" Text="此范围没有用量记录。试试“全部时间”，或检查数据源目录。" Foreground="{StaticResource Muted}" Margin="20,14" Visibility="Collapsed"/>
-                            <Grid Margin="20,12"><TextBlock Text="双击会话或按 Enter 查看用量详情" Style="{StaticResource Caption}"/><Button x:Name="DetailButton" Content="查看所选会话" HorizontalAlignment="Right" Padding="10,5" MinHeight="28" FontSize="11"/></Grid>
+                            <Grid Margin="20,12"><TextBlock Text="双击会话行查看会话详情，或选中后按 Enter" Style="{StaticResource Caption}"/><Button x:Name="DetailButton" Content="查看所选会话" HorizontalAlignment="Right" Padding="10,5" MinHeight="28" FontSize="11"/></Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -550,6 +550,13 @@
                 <TextBlock x:Name="StatusText" Text="正在准备读取本地用量记录…" Style="{StaticResource Caption}" AutomationProperties.LiveSetting="Polite"/>
                 <TextBlock Text="统计来自本地日志 · 非账单金额" HorizontalAlignment="Right" Style="{StaticResource Caption}"/>
             </Grid>
+            <!-- 首屏读取遮罩：覆盖整个数据区（含筛选与状态栏），读取完成前拦下所有点击，避免把“还没读出来”当成“没有数据”。 -->
+            <Border x:Name="LoadingOverlay" Grid.Row="0" Grid.RowSpan="5" Background="#CC101316" Visibility="Collapsed">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="正在读取本地日志…" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="LoadingDetail" Text="读取完成后自动展示统计结果" Foreground="{StaticResource Muted}" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </Window>

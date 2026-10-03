@@ -26,6 +26,7 @@ namespace AI_Assistant
         public string FormatHint;                    // 编辑区上方格式说明
         public string ValidatePassedMessage;         // 校验通过提示
         public Func<string, List<string>> Validator; // 语法或类型错误抛 InvalidOperationException；返回警告列表
+        public Func<string, string> Formatter;       // 界面保存时重排全文的格式化器；null 表示原样保存
     }
 
     public abstract class ProviderConfigStore
@@ -55,6 +56,12 @@ namespace AI_Assistant
         public string ReadCurrent()
         {
             return File.Exists(SettingsPath) ? File.ReadAllText(SettingsPath) : Spec.Template;
+        }
+
+        // 用户原始配置（首次打开时留档的全文）；尚无留档时回退当前生效文件（其自身再回退模板）。
+        public string ReadOriginal()
+        {
+            return File.Exists(OriginalPath) ? File.ReadAllText(OriginalPath) : ReadCurrent();
         }
 
         public void Save(ProviderConfig config, bool overwrite = false)
@@ -130,19 +137,34 @@ namespace AI_Assistant
             return match == null ? "当前文件（未匹配已保存配置）" : match.Name;
         }
 
+        // 软件启动或首次打开配置界面时调用：把当时的生效文件留档为原配置；留档只创建一次，之后永不被覆盖。
+        public void PreserveOriginal()
+        {
+            if (File.Exists(SettingsPath) && !File.Exists(OriginalPath)) File.Copy(SettingsPath, OriginalPath, false);
+        }
+
+        // 有留档、且当前生效文件已偏离留档内容时才需要恢复；当前文件缺失同样视为可恢复。
+        public bool CanRestore()
+        {
+            if (!File.Exists(OriginalPath)) return false;
+            try { return !File.Exists(SettingsPath) || !File.ReadAllBytes(SettingsPath).SequenceEqual(File.ReadAllBytes(OriginalPath)); }
+            catch (IOException) { return true; }
+            catch (UnauthorizedAccessException) { return true; }
+        }
+
         public void Apply(ProviderConfig config)
         {
             if (config == null) throw new InvalidOperationException("请先填写配置。");
             Spec.Validator(config.Json);
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath));
-            // 原始备份只创建一次；后续切换仅更新上一份配置的备份。
-            if (File.Exists(SettingsPath) && !File.Exists(OriginalPath)) File.Copy(SettingsPath, OriginalPath, false);
+            // 启动/界面打开时已留档；这里兜底（例如首开时还没有生效文件），留档只创建一次。
+            PreserveOriginal();
             WriteAtomic(SettingsPath, Encoding.UTF8.GetBytes(config.Json), BackupPath);
         }
 
         public void Restore()
         {
-            if (!File.Exists(OriginalPath)) throw new InvalidOperationException("尚无首次切换前的原配置。");
+            if (!File.Exists(OriginalPath)) throw new InvalidOperationException("尚无留档的原配置。");
             WriteAtomic(SettingsPath, File.ReadAllBytes(OriginalPath), BackupPath);
         }
 

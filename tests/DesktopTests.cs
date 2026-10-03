@@ -49,6 +49,19 @@ public static class DesktopTests
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             var app = new Application();
             var desktop = new Desktop();
+            // 单实例竞态保护：同一份数据目录只允许一个实例；测试在临时目录上验证最后恢复环境，不影响后续断言。
+            string lockDir = Path.Combine(Path.GetTempPath(), "ai-instance-lock-" + Guid.NewGuid().ToString("N"));
+            string oldCodexHome = Environment.GetEnvironmentVariable("CODEX_HOME");
+            string oldClaudeDir = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR");
+            string oldLocalAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+            Environment.SetEnvironmentVariable("CODEX_HOME", lockDir);
+            Environment.SetEnvironmentVariable("CLAUDE_CONFIG_DIR", lockDir);
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", lockDir);
+            Check(Program.AcquireInstanceLock(), "首次启动可获取单实例锁");
+            Check(!Program.AcquireInstanceLock(), "已有实例时再次启动被拒绝（同数据目录不允许第二个实例）");
+            Environment.SetEnvironmentVariable("CODEX_HOME", oldCodexHome);
+            Environment.SetEnvironmentVariable("CLAUDE_CONFIG_DIR", oldClaudeDir);
+            Environment.SetEnvironmentVariable("LOCALAPPDATA", oldLocalAppData);
             var result = new ScanResult { Files = 2, Records = new List<Usage> {
                 new Usage { Key = "c1", Platform = "Codex", Project = "E:/测试项目", Session = "s1", Model = "测试模型",
                     Time = new DateTimeOffset(DateTime.Today.AddHours(10)), Input = 20, CacheRead = 70, CacheWrite = 10, Output = 30 },
@@ -56,6 +69,7 @@ public static class DesktopTests
                     Time = new DateTimeOffset(DateTime.Today.AddDays(-3).AddHours(10)), Input = 100, CacheRead = 0, CacheWrite = 0, Output = 10 }
             } };
             desktop.SetResult(result); Layout(desktop, 1360, 910);
+            Check(Find<Border>(desktop, "LoadingOverlay").Visibility == Visibility.Collapsed, "初始不显示加载遮罩（仅首次读取时出现）");
             Check(Find<ComboBox>(desktop, "PeriodFilter").SelectedIndex == 0, "默认选择今天");
             Check(Find<DatePicker>(desktop, "StartDate").SelectedDate == DateTime.Today && Find<DatePicker>(desktop, "EndDate").SelectedDate == DateTime.Today,
                 "默认起止日期均为今天");
@@ -204,7 +218,12 @@ public static class DesktopTests
             Find<ComboBox>(desktop, "PeriodFilter").SelectedIndex = 1;
             Find<TextBox>(desktop, "SearchBox").Text = "不存在的项目"; desktop.Apply();
             Check(Find<TextBlock>(desktop, "EmptyText").Visibility == Visibility.Visible, "搜索空结果显示提示");
+            Check(Find<TextBlock>(desktop, "EmptyText").Text.Contains("更换关键词"), "搜索无结果时提示引导更换关键词");
             Find<TextBox>(desktop, "SearchBox").Clear(); desktop.Apply();
+            Check(Find<TextBlock>(desktop, "EmptyText").Text.Contains("此范围没有用量记录"), "清空搜索后空表提示恢复默认文案");
+            Check(!Find<Button>(desktop, "DetailButton").IsEnabled, "未选中行时“查看所选会话”按钮置灰");
+            Find<DataGrid>(desktop, "SessionsGrid").SelectedIndex = 0;
+            Check(Find<Button>(desktop, "DetailButton").IsEnabled, "选中行后“查看所选会话”按钮恢复可用");
             Find<Button>(desktop, "SessionsButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(Find<StackPanel>(desktop, "OverviewPanels").Visibility == Visibility.Collapsed, "会话导航切换视图");
             Find<Button>(desktop, "OverviewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -243,6 +262,7 @@ public static class DesktopTests
             Find<TextBox>(desktop, "SearchBox").Text = "另一项目"; desktop.Apply();
             Check(Find<DataGrid>(desktop, "ProjectsGrid").Items.Count == 0
                 && Find<TextBlock>(desktop, "ProjectsEmpty").Visibility == Visibility.Visible, "搜索空结果在项目页显示提示");
+            Check(Find<TextBlock>(desktop, "ProjectsEmpty").Text.Contains("更换关键词"), "项目页搜索空态同样引导更换关键词");
             Find<TextBox>(desktop, "SearchBox").Clear(); desktop.Apply();
             Find<ComboBox>(desktop, "PlatformFilter").SelectedIndex = 0;
             Render(desktop, "artifacts/projects.png", 1360, 910);
